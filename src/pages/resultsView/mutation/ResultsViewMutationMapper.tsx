@@ -14,6 +14,8 @@ import {
 
 import MutationRateSummary from "pages/resultsView/mutation/MutationRateSummary";
 import ResultsViewMutationMapperStore from "pages/resultsView/mutation/ResultsViewMutationMapperStore";
+import {PatientViewPageStore} from "../../../pages/patientView/clinicalInformation/PatientViewPageStore";
+import {ResultsViewPageStore} from "../ResultsViewPageStore";
 import ResultsViewMutationTable from "pages/resultsView/mutation/ResultsViewMutationTable";
 import {getMobxPromiseGroupStatus} from "../../../shared/lib/getMobxPromiseGroupStatus";
 
@@ -25,6 +27,7 @@ export interface IResultsViewMutationMapperProps extends IMutationMapperProps
     mutationCountCache?:MutationCountCache;
     genomeNexusMyVariantInfoCache?:GenomeNexusMyVariantInfoCache;
     userEmailAddress:string;
+    clinicalDataStore:ResultsViewPageStore;
 }
 
 @observer
@@ -99,7 +102,11 @@ export default class ResultsViewMutationMapper extends MutationMapper<IResultsVi
                 enableHotspot={this.props.config.show_hotspot}
                 enableMyCancerGenome={this.props.config.mycancergenome_show}
                 enableCivic={this.props.config.show_civic}
+<<<<<<< HEAD
                 totalNumberOfExons={this.totalExonNumber}
+=======
+                sampleIdToClinicalDataMap={this.props.clinicalDataStore.clinicalDataGroupedBySampleMap.result}
+>>>>>>> Extended patient and results view mutation table to display FACETS data if available
             />
         );
     }

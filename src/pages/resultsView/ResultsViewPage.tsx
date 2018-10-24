@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import * as React from "react";
 import * as _ from "lodash";
 import $ from "jquery";
@@ -5,6 +6,15 @@ import URL from 'url';
 import {inject, observer} from "mobx-react";
 import {computed, observable, reaction, runInAction} from "mobx";
 import {ResultsViewPageStore} from "./ResultsViewPageStore";
+=======
+import * as React from 'react';
+import * as _ from 'lodash';
+import $ from 'jquery';
+import {observer, inject, Observer} from "mobx-react";
+import {reaction, computed, observable, runInAction} from "mobx";
+import {ResultsViewPageStore, SamplesSpecificationElement} from "./ResultsViewPageStore";
+import {PatientViewPageStore} from "../../pages/patientView/clinicalInformation/PatientViewPageStore";
+>>>>>>> Extended patient and results view mutation table to display FACETS data if available
 import CancerSummaryContainer from "pages/resultsView/cancerSummary/CancerSummaryContainer";
 import Mutations from "./mutation/Mutations";
 import MutualExclusivityTab from "./mutualExclusivity/MutualExclusivityTab";
@@ -37,10 +47,13 @@ import QueryAndDownloadTabs from "shared/components/query/QueryAndDownloadTabs";
 import {createQueryStore} from "pages/home/HomePage";
 import ExtendedRouterStore from "shared/lib/ExtendedRouterStore";
 
+const patientViewPageStore = new PatientViewPageStore();
+const win:any = (window as any);
+win.patientViewPageStore = patientViewPageStore;
+
 function initStore(appStore:AppStore) {
 
     const resultsViewPageStore = new ResultsViewPageStore(appStore, getBrowserWindow().globalStores.routing);
-
     resultsViewPageStore.tabId = getTabId(getBrowserWindow().globalStores.routing.location.pathname);
 
     let lastQuery:any;
@@ -222,7 +235,7 @@ export default class ResultsViewPage extends React.Component<IResultsViewPagePro
                 id:ResultsViewTab.MUTATIONS,
                 getTab: () => {
                     return <MSKTab key={3} id={ResultsViewTab.MUTATIONS} linkText="Mutations">
-                        <Mutations store={store} appStore={ this.props.appStore } />
+                        <Mutations store={store} appStore={ this.props.appStore }/>
                     </MSKTab>
                 }
             },
