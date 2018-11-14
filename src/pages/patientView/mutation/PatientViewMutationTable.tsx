@@ -175,7 +175,7 @@ export default class PatientViewMutationTable extends MutationTable<IPatientView
         };
     }
 
-    @computed private get hasCcfMCopies():boolean{
+    @computed private get hasCcfMCopies():boolean {
         let data:Mutation[][] = [];
         if (this.props.data) {
             data = this.props.data;
@@ -189,7 +189,7 @@ export default class PatientViewMutationTable extends MutationTable<IPatientView
         });
     }
 
-    @computed private get hasTotalCopyNumber():boolean{
+    @computed private get hasTotalCopyNumber():boolean {
         let data:Mutation[][] = [];
         if (this.props.data) {
             data = this.props.data;
