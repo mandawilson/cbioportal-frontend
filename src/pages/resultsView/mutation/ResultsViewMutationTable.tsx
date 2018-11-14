@@ -9,6 +9,7 @@ import TumorAlleleFreqColumnFormatter from "shared/components/mutationTable/colu
 import {Mutation, ClinicalData} from "shared/api/generated/CBioPortalAPI";
 import ExonColumnFormatter from "shared/components/mutationTable/column/ExonColumnFormatter";
 import GnomadColumnFormatter from "shared/components/mutationTable/column/GnomadColumnFormatter";
+import {floatValueIsNA} from "shared/lib/NumberUtils";
 
 export interface IResultsViewMutationTableProps extends IMutationTableProps {
     // add results view specific props here if needed
@@ -131,7 +132,7 @@ export default class ResultsViewMutationTable extends MutationTable<IResultsView
             () => <span style = {{display:'inline-block'}}>Exon<br/>({this.props.totalNumberOfExons} in total)</span>;
     }
     
-    @computed private get hasCcfMCopies():boolean{
+    @computed private get hasCcfMCopies():boolean {
         let data:Mutation[][] = [];
         if (this.props.dataStore) {
             data = this.props.dataStore.allData;
@@ -140,12 +141,12 @@ export default class ResultsViewMutationTable extends MutationTable<IResultsView
         }
         return data.some((row:Mutation[]) => {
             return row.some((m:Mutation) => {
-                return (m.ccfMCopies !== 1.4e-45);
+                return !floatValueIsNA(m.ccfMCopies);
             });
         });
     }
 
-    @computed private get hasTotalCopyNumber():boolean{
+    @computed private get hasTotalCopyNumber():boolean {
         let data:Mutation[][] = [];
         if (this.props.dataStore) {
             data = this.props.dataStore.allData;
