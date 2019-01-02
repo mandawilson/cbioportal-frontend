@@ -273,7 +273,7 @@ export default class MutationTable<P extends IMutationTableProps> extends React.
                 if (this.props.discreteCNACache && this.props.molecularProfileIdToMolecularProfile) {
                     return DiscreteCNAColumnFormatter.renderFunction(d,
                         this.props.molecularProfileIdToMolecularProfile as {[molecularProfileId:string]:MolecularProfile},
-                        this.props.discreteCNACache as DiscreteCNACache, this.props.sampleIdToClinicalDataMap);
+                        this.props.discreteCNACache as DiscreteCNACache, this.props.sampleIdToClinicalDataMap, [d[0].sampleId]);
                 } else {
                     return (<span></span>);
                 }
@@ -283,7 +283,7 @@ export default class MutationTable<P extends IMutationTableProps> extends React.
                     return DiscreteCNAColumnFormatter.getSortValue(d,
                         this.props.molecularProfileIdToMolecularProfile as {[molecularProfileId:string]:MolecularProfile},
                         this.props.discreteCNACache as DiscreteCNACache,
-                        this.props.sampleIdToClinicalDataMap);
+                        this.props.sampleIdToClinicalDataMap, [d[0].sampleId]);
                 } else {
                     return "";
                 }
@@ -303,6 +303,7 @@ export default class MutationTable<P extends IMutationTableProps> extends React.
                         this.props.molecularProfileIdToMolecularProfile as {[molecularProfileId:string]:MolecularProfile},
                         this.props.discreteCNACache as DiscreteCNACache,
                         this.props.sampleIdToClinicalDataMap,
+                        [d[0].sampleId],
                         filterString);
                 } else {
                     return false;

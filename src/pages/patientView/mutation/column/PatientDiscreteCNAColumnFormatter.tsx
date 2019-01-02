@@ -1,13 +1,13 @@
 import * as React from 'react';
-import DefaultTooltip from 'public-lib/components/defaultTooltip/DefaultTooltip';
+import DefaultTooltip from 'shared/components/defaultTooltip/DefaultTooltip';
 import 'rc-tooltip/assets/bootstrap_white.css';
 import {
     DiscreteCNACacheDataType,
     default as DiscreteCNACache
 } from "shared/cache/DiscreteCNACache";
 import {MolecularProfile, Mutation, ClinicalData} from "shared/api/generated/CBioPortalAPI";
-import {default as TableCellStatusIndicator, TableCellStatus} from "public-lib/components/TableCellStatus";
 import {default as TableCellStatusIndicator, TableCellStatus} from "shared/components/TableCellStatus";
+import SampleManager from "../../sampleManager";
 
 export default class DiscreteCNAColumnFormatter {
 
@@ -124,11 +124,12 @@ export default class DiscreteCNAColumnFormatter {
                 </span>);
     }
 
-    public static getFacetsCNATooltip(mutation:Mutation, sampleIdToClinicalDataMap:{[sampleId:string]:ClinicalData[]}|undefined) {
+    public static getFacetsCNATooltip(mutation:Mutation, sampleIdToClinicalDataMap:{[sampleId:string]:ClinicalData[]}|undefined, sampleManager:SampleManager) {
         const sampleId:string = mutation.sampleId;
         const tcn = mutation.totalCopyNumber;
         const lcn = mutation.minorCopyNumber;
         const mcn:number = tcn - lcn;
+        const componentBySample = sampleManager.getComponentForSample(sampleId, 1, "");
         let wgd = null;
         let facetsTooltip = null;
         if (sampleIdToClinicalDataMap) {
@@ -138,16 +139,19 @@ export default class DiscreteCNAColumnFormatter {
             }
         }
         if (tcn === -1 || lcn === -1 || wgd === null) {
-            return (<span><b>NA</b></span>);
+            return (<span>{componentBySample} <b>NA</b></span>);
         } else {
             facetsTooltip = DiscreteCNAColumnFormatter.getFacetsCall(mcn, lcn, wgd).toLowerCase() 
         }
-        return (<span><b>{facetsTooltip}</b> ({wgd} with total copy number of {tcn.toString(10)} and a minor copy number of {lcn.toString(10)})</span>);
+        return (<span>{componentBySample} <b>{facetsTooltip}</b> ({wgd} with total copy number of {tcn.toString(10)} and a minor copy number of {lcn.toString(10)})</span>);
             
     }
 
-    public static renderFunction(data: Mutation[], molecularProfileIdToMolecularProfile: {[molecularProfileId:string]:MolecularProfile}, cache:DiscreteCNACache, sampleIdToClinicalDataMap: {[key: string]:ClinicalData[]}|undefined, sampleIds:string[]) {
-        const displayValuesBySample:{[key:string]:JSX.Element} = DiscreteCNAColumnFormatter.getElementsForMutations(data, molecularProfileIdToMolecularProfile, cache, sampleIdToClinicalDataMap);
+    public static renderFunction(data: Mutation[], molecularProfileIdToMolecularProfile: {[molecularProfileId:string]:MolecularProfile}, cache:DiscreteCNACache, sampleIdToClinicalDataMap: {[key: string]:ClinicalData[]}|undefined, sampleIds:string[], sampleManager:SampleManager|null) {
+        if (!sampleManager) {
+            return (<span></span>);
+        }
+        const displayValuesBySample:{[key:string]:JSX.Element} = DiscreteCNAColumnFormatter.getElementsForMutations(data, molecularProfileIdToMolecularProfile, cache, sampleIdToClinicalDataMap, sampleManager);
         const sampleIdsWithElements = sampleIds.filter(sampleId => displayValuesBySample[sampleId]);
         if (!sampleIdsWithElements) {
             return (<span></span>);
@@ -168,23 +172,23 @@ export default class DiscreteCNAColumnFormatter {
         }
     }
  
-    public static getElementsForMutations(data:Mutation[], molecularProfileIdToMolecularProfile: {[molecularProfileId:string]:MolecularProfile}, cache:DiscreteCNACache, sampleIdToClinicalDataMap: {[key: string]:ClinicalData[]}|undefined) {
+    public static getElementsForMutations(data:Mutation[], molecularProfileIdToMolecularProfile: {[molecularProfileId:string]:MolecularProfile}, cache:DiscreteCNACache, sampleIdToClinicalDataMap: {[key: string]:ClinicalData[]}|undefined, sampleManager:SampleManager) {
         const sampleToElement:{[key: string]: JSX.Element} = {};
         for (const mutation of data) {
-            const element = DiscreteCNAColumnFormatter.getElement(mutation, molecularProfileIdToMolecularProfile, cache, sampleIdToClinicalDataMap);
+            const element = DiscreteCNAColumnFormatter.getElement(mutation, molecularProfileIdToMolecularProfile, cache, sampleIdToClinicalDataMap, sampleManager);
             sampleToElement[mutation.sampleId] = element;
         }
         return sampleToElement;
     }
 
-    public static getElement(mutation:Mutation, molecularProfileIdToMolecularProfile: {[molecularProfileId:string]:MolecularProfile}, cache:DiscreteCNACache, sampleIdToClinicalDataMap: {[key: string]:ClinicalData[]}|undefined) {
+    public static getElement(mutation:Mutation, molecularProfileIdToMolecularProfile: {[molecularProfileId:string]:MolecularProfile}, cache:DiscreteCNACache, sampleIdToClinicalDataMap: {[key: string]:ClinicalData[]}|undefined, sampleManager:SampleManager) {
         const cnaData = DiscreteCNAColumnFormatter.getData(mutation, molecularProfileIdToMolecularProfile, cache);
         const facetsCNAData = DiscreteCNAColumnFormatter.getFacetsCNAData(mutation, sampleIdToClinicalDataMap);
         let cnaDataValue = DiscreteCNAColumnFormatter.getTdContents(cnaData);
         let cnaToolTip = DiscreteCNAColumnFormatter.getTooltipContents(cnaData);
         if (facetsCNAData !== "NA") {        
             cnaDataValue = DiscreteCNAColumnFormatter.formatFacetsCNAData(facetsCNAData);
-            cnaToolTip = DiscreteCNAColumnFormatter.getFacetsCNATooltip(mutation, sampleIdToClinicalDataMap);
+            cnaToolTip = DiscreteCNAColumnFormatter.getFacetsCNATooltip(mutation, sampleIdToClinicalDataMap, sampleManager);
         }
         return (<DefaultTooltip placement="left" 
                     overlay={cnaToolTip} 
@@ -195,52 +199,19 @@ export default class DiscreteCNAColumnFormatter {
         );
     }
 
-    public static getTextValue(data:Mutation[], molecularProfileIdToMolecularProfile: {[molecularProfileId:string]:MolecularProfile}, cache:DiscreteCNACache) : string {
-        const tdValue = DiscreteCNAColumnFormatter.getTdValue(DiscreteCNAColumnFormatter.getData(data, molecularProfileIdToMolecularProfile, cache));
-        if (tdValue !== null) {
-            return DiscreteCNAColumnFormatter.altToFilterString[tdValue];
+    public static getSortValue(data:Mutation[], molecularProfileIdToMolecularProfile: {[molecularProfileId:string]:MolecularProfile}, cache:DiscreteCNACache, sampleIdToClinicalDataMap: {[key: string]:ClinicalData[]}|undefined) {
+        const facetsCNAData = DiscreteCNAColumnFormatter.getFacetsCNAData(data[0], sampleIdToClinicalDataMap);
+        if (facetsCNAData!= "NA") {
+            return facetsCNAData;
         }
-        return "";
+        const altValue = DiscreteCNAColumnFormatter.getTdValue(DiscreteCNAColumnFormatter.getData(data[0], molecularProfileIdToMolecularProfile, cache));
+        if (altValue) {
+            return DiscreteCNAColumnFormatter.altToFilterString[altValue];
+        }
+        return null;
     }
 
-    // TODO figure out if we need both of these methods
-    public static getSortValue(data:Mutation[], molecularProfileIdToMolecularProfile: {[molecularProfileId:string]:MolecularProfile}, cache:DiscreteCNACache) {
-        return DiscreteCNAColumnFormatter.getTdValue(DiscreteCNAColumnFormatter.getData(data, molecularProfileIdToMolecularProfile, cache));
-    }
-
-    public static getCNACall(data:Mutation[], molecularProfileIdToMolecularProfile: {[molecularProfileId:string]:MolecularProfile}, cache:DiscreteCNACache, sampleIdToClinicalDataMap: {[key: string]:ClinicalData[]}|undefined, sampleIds:string[]) {
-        const sampleToCNA:{[key: string]: string} = {};
-        for (const mutation of data) {
-            const facetsCNAData = DiscreteCNAColumnFormatter.getFacetsCNAData(mutation, sampleIdToClinicalDataMap);
-            const cnaData = DiscreteCNAColumnFormatter.getData(mutation, molecularProfileIdToMolecularProfile, cache);
-            if (facetsCNAData != "NA") {
-                sampleToCNA[mutation.sampleId] = facetsCNAData;
-            } else if (cnaData && cnaData.data && !!DiscreteCNAColumnFormatter.altToFilterString[cnaData.data.alteration]) {
-                sampleToCNA[mutation.sampleId] = DiscreteCNAColumnFormatter.altToFilterString[cnaData.data.alteration];
-            } else {
-                sampleToCNA[mutation.sampleId] = "";
-            }
-        }
-        return sampleToCNA;
-    }          
-
-    public static getSortValue(data:Mutation[], molecularProfileIdToMolecularProfile: {[molecularProfileId:string]:MolecularProfile}, cache:DiscreteCNACache, sampleIdToClinicalDataMap: {[key: string]:ClinicalData[]}|undefined, sampleIds:string[]) {
-        const displayValuesBySample:{[key: string]: string} = DiscreteCNAColumnFormatter.getCNACall(data, molecularProfileIdToMolecularProfile, cache, sampleIdToClinicalDataMap, sampleIds);
-        const sampleIdsWithValues = sampleIds.filter(sampleId => displayValuesBySample[sampleId]);
-        const displayValuesAsString = sampleIdsWithValues.map((sampleId:string) => {
-            return displayValuesBySample[sampleId];
-        })
-        return displayValuesAsString.join("; ");
-    } 
-
-    public static filter(data:Mutation[], molecularProfileIdToMolecularProfile: {[molecularProfileId:string]:MolecularProfile}, cache:DiscreteCNACache, sampleIdToClinicalDataMap: {[key: string]:ClinicalData[]}|undefined, sampleIds:string[], filterString:string):boolean {
-        const displayValuesBySample:{[key: string]: string} = DiscreteCNAColumnFormatter.getCNACall(data, molecularProfileIdToMolecularProfile, cache, sampleIdToClinicalDataMap, sampleIds);
-        const sampleIdsWithValues = sampleIds.filter(sampleId => displayValuesBySample[sampleId]);
-        const displayValuesAsString = sampleIdsWithValues.map((sampleId:string) => {
-            return displayValuesBySample[sampleId];
-        })
-        return displayValuesAsString.join(";").toLowerCase().indexOf(filterString.toLowerCase()) > -1;
-/* 
+    public static filter(data:Mutation, molecularProfileIdToMolecularProfile: {[molecularProfileId:string]:MolecularProfile}, cache:DiscreteCNACache, sampleIdToClinicalDataMap: {[key: string]:ClinicalData[]}|undefined, filterString:string):boolean {
         const cnaData = DiscreteCNAColumnFormatter.getData(data, molecularProfileIdToMolecularProfile, cache);
         const facetsCNAData = DiscreteCNAColumnFormatter.getFacetsCNAData(data, sampleIdToClinicalDataMap);
         if (facetsCNAData !== "NA") {
@@ -252,7 +223,6 @@ export default class DiscreteCNAColumnFormatter {
         } else {
             return false;
         }
-*/  
     }
 
     protected static getData(mutation:Mutation | undefined, molecularProfileIdToMolecularProfile: {[molecularProfileId:string]:MolecularProfile}, discreteCNACache:DiscreteCNACache):DiscreteCNACacheDataType | null {
