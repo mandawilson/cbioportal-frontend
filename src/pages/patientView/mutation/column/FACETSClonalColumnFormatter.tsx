@@ -1,5 +1,5 @@
 import * as React from 'react';
-import DefaultTooltip from "shared/components/defaultTooltip/DefaultTooltip";
+import DefaultTooltip from "public-lib/components/defaultTooltip/DefaultTooltip";
 import {Mutation} from "shared/api/generated/CBioPortalAPI";
 import SampleManager from "../../sampleManager";
 import {floatValueIsNA} from "shared/lib/NumberUtils";
