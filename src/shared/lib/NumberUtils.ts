@@ -14,4 +14,3 @@ export function floatValueIsNA(number: number): boolean {
     const minFloatValue: number = 1.0e-44;
     return (number > 0 && number < minFloatValue);
 }
->>>>>>> add utility function for determining if float is within a specified range indicating "NA"

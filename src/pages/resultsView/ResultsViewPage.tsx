@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 import * as React from "react";
 import * as _ from "lodash";
 import $ from "jquery";
@@ -6,15 +5,7 @@ import URL from 'url';
 import {inject, observer} from "mobx-react";
 import {computed, observable, reaction, runInAction} from "mobx";
 import {ResultsViewPageStore} from "./ResultsViewPageStore";
-=======
-import * as React from 'react';
-import * as _ from 'lodash';
-import $ from 'jquery';
-import {observer, inject, Observer} from "mobx-react";
-import {reaction, computed, observable, runInAction} from "mobx";
-import {ResultsViewPageStore, SamplesSpecificationElement} from "./ResultsViewPageStore";
 import {PatientViewPageStore} from "../../pages/patientView/clinicalInformation/PatientViewPageStore";
->>>>>>> Extended patient and results view mutation table to display FACETS data if available
 import CancerSummaryContainer from "pages/resultsView/cancerSummary/CancerSummaryContainer";
 import Mutations from "./mutation/Mutations";
 import MutualExclusivityTab from "./mutualExclusivity/MutualExclusivityTab";
