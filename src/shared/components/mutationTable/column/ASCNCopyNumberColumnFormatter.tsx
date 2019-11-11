@@ -54,13 +54,10 @@ export default class ASCNCopyNumberColumnFormatter {
     };
 
     private static hasRequiredAscnData(mutation:Mutation):boolean {
-        if (mutation.alleleSpecificCopyNumber === undefined || 
-            mutation.alleleSpecificCopyNumber.totalCopyNumber === undefined || 
-            mutation.alleleSpecificCopyNumber.minorCopyNumber === undefined ||
-            mutation.alleleSpecificCopyNumber.ascnIntegerCopyNumber == undefined) {
-            return false;
-        }
-        return true;
+        return mutation.alleleSpecificCopyNumber !== undefined && 
+            mutation.alleleSpecificCopyNumber.totalCopyNumber !== undefined && 
+            mutation.alleleSpecificCopyNumber.minorCopyNumber !== undefined &&
+            mutation.alleleSpecificCopyNumber.ascnIntegerCopyNumber !== undefined;
     }
 
     private static getASCNCopyNumberData(mutation:Mutation, sampleIdToClinicalDataMap:{[sampleId:string]:ClinicalData[]}|undefined) {
