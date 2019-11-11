@@ -1,14 +1,16 @@
 import * as React from 'react';
 import { If, Then, Else } from 'react-if';
 import {observer} from "mobx-react";
+import * as _ from 'lodash';
 import {
-    IClinicalGroupMatch, IGenomicGroupMatch, IGenomicMatch, IDetailedTrialMatch, IArmMatch
+    IClinicalGroupMatch, IGenomicGroupMatch, IGenomicMatch, IDetailedTrialMatch, IArmMatch, IDrug
 } from "../../../shared/model/MatchMiner";
 import styles from './style/trialMatch.module.scss';
 import { computed } from "mobx";
 import LazyMobXTable from "../../../shared/components/lazyMobXTable/LazyMobXTable";
-import SampleManager from "../sampleManager";
+import SampleManager from "../SampleManager";
 import DefaultTooltip, { placeArrowBottomLeft } from "../../../public-lib/components/defaultTooltip/DefaultTooltip";
+import { getAgeRangeDisplay } from "./TrialMatchTableUtils";
 
 export type ITrialMatchProps = {
     sampleManager: SampleManager | null;
@@ -17,13 +19,13 @@ export type ITrialMatchProps = {
 }
 
 enum ColumnKey {
-    ID = 'ID',
     TITLE = 'Title',
-    MATCHING_CRITERIA = 'Matching Criteria'
+    MATCHING_CRITERIA = 'Matching Criteria',
+    STATUS = 'Status',
 }
 
 enum ColumnWidth {
-    ID = 140
+    STATUS = 140
 }
 
 class TrialMatchTableComponent extends LazyMobXTable<IDetailedTrialMatch> {
@@ -36,14 +38,14 @@ export default class TrialMatchTable extends React.Component<ITrialMatchProps> {
     @computed
     get columnWidths() {
         return {
-            [ColumnKey.ID]: ColumnWidth.ID,
-            [ColumnKey.TITLE]: 0.35 * (this.props.containerWidth - ColumnWidth.ID),
-            [ColumnKey.MATCHING_CRITERIA]: 0.65 * (this.props.containerWidth - ColumnWidth.ID)
+            [ColumnKey.STATUS]: ColumnWidth.STATUS,
+            [ColumnKey.TITLE]: 0.35 * (this.props.containerWidth - ColumnWidth.STATUS),
+            [ColumnKey.MATCHING_CRITERIA]: 0.65 * (this.props.containerWidth - ColumnWidth.STATUS)
         };
     }
 
     private _columns = [{
-        name: ColumnKey.ID,
+        name: ColumnKey.TITLE,
         render: (trial: IDetailedTrialMatch) => (
             <div>
                 <If condition={trial.protocolNo.length > 0}>
@@ -52,15 +54,25 @@ export default class TrialMatchTable extends React.Component<ITrialMatchProps> {
                 <If condition={trial.nctId.length > 0}>
                     <div><a target="_blank" href={"https://clinicaltrials.gov/ct2/show/" + trial.nctId}>{trial.nctId}</a></div>
                 </If>
-                <div>{trial.status}</div>
+                <div>{trial.shortTitle}</div>
+                {trial.principalInvestigator &&
+                    <div className={styles.icon}>
+                        <i className={`fa fa-user-md ${styles.marginRight}`} aria-hidden="true"></i>
+                        <If condition={!_.isUndefined(trial.principalInvestigator.url)}>
+                            <Then>
+                                <a target="_blank" href={trial.principalInvestigator.url}>{trial.principalInvestigator.full_name}</a>
+                            </Then>
+                            <Else>
+                                {trial.principalInvestigator.full_name}
+                            </Else>
+                        </If>
+                        <If condition={!_.isUndefined(trial.principalInvestigator.email)}>
+                            <a href={"mailto:" + trial.principalInvestigator.email}><i className={`fa fa-envelope-o ${styles.marginLeft}`} aria-hidden="true"></i></a>
+                        </If>
+                    </div>
+                }
             </div>
         ),
-        sortBy: (trial: IDetailedTrialMatch) => trial.protocolNo,
-        width: this.columnWidths[ColumnKey.ID]
-    }, {
-        name: ColumnKey.TITLE,
-        render: (trial: IDetailedTrialMatch) => (<span>{trial.shortTitle}</span>),
-        sortBy: (trial: IDetailedTrialMatch) => trial.shortTitle,
         width: this.columnWidths[ColumnKey.TITLE]
     }, {
         name: ColumnKey.MATCHING_CRITERIA,
@@ -68,37 +80,72 @@ export default class TrialMatchTable extends React.Component<ITrialMatchProps> {
             <div>
                 {trial.matches.map((armMatch: IArmMatch, index: number) => (
                     <div>
-                        <div>
-                            {armMatch.matches.map((clinicalGroupMatch: IClinicalGroupMatch, cgIndex:number) => (
-                                <div className={styles.criteriaContainer}>
-                                    {this.getGenomicMatch(clinicalGroupMatch)}
-                                    {this.getClinicalMatch(clinicalGroupMatch)}
-                                    <If condition={cgIndex < armMatch.matches.length - 1}><hr className={styles.criteriaHr}/></If>
+                        <div className={styles.matchInfoContainer}>
+                            <div className={styles.sampleIdsContainer}>
+                                {this.getSampleIdIcons(armMatch.sampleIds)}
+                            </div>
+                            <div className={styles.genomicInfoContainer}>
+                                <div>
+                                    {armMatch.matches.map((clinicalGroupMatch: IClinicalGroupMatch, cgIndex:number) => (
+                                        <div className={styles.criteriaContainer}>
+                                            {this.getGenomicMatch(clinicalGroupMatch)}
+                                            {this.getClinicalMatch(clinicalGroupMatch)}
+                                            <If condition={cgIndex < armMatch.matches.length - 1}><hr className={styles.criteriaHr}/></If>
+                                        </div>
+                                    ))}
                                 </div>
-                            ))}
+                                 <If condition={armMatch.armDescription !== ''}>
+                                    <div style={{ marginTop: 7, marginBottom: 3, width: '75%' }}>
+                                        <span>Arm: {armMatch.armDescription}</span>
+                                    </div>
+                                </If>
+                                <If condition={armMatch.drugs.length > 0}>
+                                    <div>
+                                        <span>
+                                            <img src={require("../../../globalStyles/images/drug.png")} style={{ width: 18, marginTop: -5 }} alt="drug icon"/>
+                                            <b>{armMatch.drugs.map((drugCombination: string[]) => drugCombination.join(' + ')).join(', ')}</b></span>
+                                    </div>
+                                </If>
+                            </div>
                         </div>
-                         <If condition={armMatch.armDescription !== ''}>
-                            <div className={styles.armDiv}>
-                                <span>Arm: {armMatch.armDescription}</span>
-                            </div>
-                        </If>
-                        <If condition={armMatch.drugs.length > 0}>
-                            <div className={styles.armDiv}>
-                                <span>Intervention: {armMatch.drugs.join(', ')}</span>
-                            </div>
-                        </If>
                         <If condition={index < trial.matches.length - 1}><hr className={styles.criteriaHr}/></If>
                     </div>
                 ))}
             </div>
         ),
         width: this.columnWidths[ColumnKey.MATCHING_CRITERIA]
+    }, {
+        name: ColumnKey.STATUS,
+        render: (trial: IDetailedTrialMatch) => (
+            <div style={{ margin: '20% 0 20% 0' }}>
+                <a target="_blank" href={"https://www.mskcc.org/cancer-care/clinical-trials/" + trial.protocolNo}><span className={styles.statusBackground}>{trial.status}</span></a>
+            </div>
+        ),
+        sortBy: (trial: IDetailedTrialMatch) => trial.status,
+        width: this.columnWidths[ColumnKey.STATUS]
     }];
+
+    public getSampleIdIcons(sampleIds: string[]) {
+        let sortedSampleIds = sampleIds;
+        if (sampleIds.length > 1) {
+            const sampleOrder = this.props.sampleManager!.getSampleIdsInOrder();
+            sortedSampleIds = sampleOrder.filter( ( sampleId: string ) => sampleIds.includes( sampleId ) );
+        }
+        return (
+            <div>
+                {sortedSampleIds.map((sampleId: string) => (
+                    <span className={styles.genomicSpan}>
+                        {this.props.sampleManager!.getComponentForSample(sampleId, 1, '')}
+                    </span>
+                ))}
+            </div>
+        );
+    }
 
     public getClinicalMatch(clinicalGroupMatch: IClinicalGroupMatch) {
         return (
             <div className={styles.firstRight}>
-                <span className={styles.secondLeft}>{clinicalGroupMatch.trialAgeNumerical + ' yrs old'}</span>
+                <span className={styles.secondLeft}>{getAgeRangeDisplay(clinicalGroupMatch.trialAgeNumerical)}</span>
                 <span className={styles.secondRight}>
                     {clinicalGroupMatch.trialOncotreePrimaryDiagnosis.positive.join(', ')}
                     {clinicalGroupMatch.trialOncotreePrimaryDiagnosis.negative.length > 0 &&
@@ -115,7 +162,7 @@ export default class TrialMatchTable extends React.Component<ITrialMatchProps> {
                                          overlay={this.tooltipClinicalContent(clinicalGroupMatch.trialOncotreePrimaryDiagnosis.negative)}
                                          destroyTooltipOnHide={true}
                                          onPopupAlign={placeArrowBottomLeft}>
-                                        {this.mainContent(clinicalGroupMatch.trialOncotreePrimaryDiagnosis.negative.length + ` cancer types`)}
+                                         <span>{clinicalGroupMatch.trialOncotreePrimaryDiagnosis.negative.length + ` cancer types`}</span>
                                     </DefaultTooltip>
                                 </Else>
                             </If>
@@ -129,80 +176,71 @@ export default class TrialMatchTable extends React.Component<ITrialMatchProps> {
     public getGenomicMatch(clinicalGroupMatch: IClinicalGroupMatch) {
         return (
             <div className={styles.firstLeft}>
-                <div>
-                    {clinicalGroupMatch.matches.map((genomicGroupMatch: IGenomicGroupMatch) => (
-                        <div>
-                            <If condition={genomicGroupMatch.matches.length === 1 &&
-                                genomicGroupMatch.genomicAlteration === `${genomicGroupMatch.matches[0].trueHugoSymbol} ${genomicGroupMatch.matches[0].trueProteinChange}`}>
-                                <Then>
-                                    {this.getGenomicExactMatch(genomicGroupMatch)}
-                                </Then>
-                                <Else>
-                                    <span className={styles.firstLeft}>{`${genomicGroupMatch.genomicAlteration}: `}
-                                        {this.getGenomicVariantCategoryMatch(genomicGroupMatch)}
-                                    </span>
-                                </Else>
-                            </If>
-                        </div>
-                    ))}
-                </div>
-                <div>
-                    { clinicalGroupMatch.notMatches.length > 0 &&
+                {clinicalGroupMatch.matches.MUTATION.map((genomicGroupMatch: IGenomicGroupMatch) => (
+                    <div>
+                        {this.getPatientMatchedGenomicInfo(genomicGroupMatch)}
+                    </div>
+                ))}
+                {clinicalGroupMatch.matches.MSI.length > 0 &&
+                    <div>Tumor is MSI-H</div>
+                }
+                {clinicalGroupMatch.matches.CNA.map((genomicGroupMatch: IGenomicGroupMatch) => (
+                    <div>
+                        {this.getGenomicAlteration(genomicGroupMatch)}
+                    </div>
+                ))}
+                {clinicalGroupMatch.matches.WILDTYPE.map((genomicGroupMatch: IGenomicGroupMatch) => (
+                    <div>
+                        {this.getGenomicAlteration(genomicGroupMatch)}
+                    </div>
+                ))}
+                { (clinicalGroupMatch.notMatches.MUTATION.length > 0 || clinicalGroupMatch.notMatches.CNA.length > 0 ) &&
+                    <div>
+                        <span className={styles.genomicSpan}>{this.getDescriptionForNotMatches(clinicalGroupMatch.notMatches.MUTATION.concat(clinicalGroupMatch.notMatches.CNA), 3, 'Negative for alterations in', '')}</span>
                         <DefaultTooltip
                             placement='bottomLeft'
                             trigger={['hover', 'focus']}
-                            overlay={this.tooltipGenomicContent(clinicalGroupMatch.notMatches)}
+                            overlay={this.tooltipGenomicContent(clinicalGroupMatch.notMatches.MUTATION.concat(clinicalGroupMatch.notMatches.CNA))}
                             destroyTooltipOnHide={false}
                             onPopupAlign={placeArrowBottomLeft}>
-                            {this.mainContent(`No alterations in ${this.getHugoSymbolName(clinicalGroupMatch.notMatches, 3)} defined by the trial`)}
+                            <i className={'fa fa-info ' + styles.icon}></i>
                         </DefaultTooltip>
-                    }
-                </div>
+                    </div>
+
+                }
+                { clinicalGroupMatch.notMatches.MSI.length > 0 &&
+                    <div>Tumor is not MSI-H</div>
+                }
+                { clinicalGroupMatch.notMatches.WILDTYPE.length > 0 &&
+                    <div>
+                        <span className={styles.genomicSpan}>{this.getDescriptionForNotMatches(clinicalGroupMatch.notMatches.WILDTYPE, 3, 'Tumor doesn\'t have', 'defined by the trial')}</span>
+                        <DefaultTooltip
+                            placement='bottomLeft'
+                            trigger={['hover', 'focus']}
+                            overlay={this.tooltipGenomicContent(clinicalGroupMatch.notMatches.WILDTYPE)}
+                            destroyTooltipOnHide={false}
+                            onPopupAlign={placeArrowBottomLeft}>
+                            <i className={'fa fa-info ' + styles.commentIcon}></i>
+                        </DefaultTooltip>
+                    </div>
+                }
             </div>
         );
     }
 
-    // Patient Genomic(i.e., BRAF V600E) info are exactly matched to trial genomic alteration(i.e., BRAF V600E)
-    public getGenomicExactMatch(genomicGroupMatch: IGenomicGroupMatch) {
+    public getPatientMatchedGenomicInfo(genomicGroupMatch: IGenomicGroupMatch) {
         return (
-            <div>{`${genomicGroupMatch.genomicAlteration} `}
-                {genomicGroupMatch.matches[0].sampleIds.map((sampleId: string) => (
-                    <span className={styles.genomicSpan}>
-                        {this.props.sampleManager!.getComponentForSample(sampleId, 1, '')}
-                    </span>
+            <div>
+                {genomicGroupMatch.matches.map((genomicMatch: IGenomicMatch) => (
+                    <div><b>{genomicMatch.trueHugoSymbol}</b> {genomicMatch.trueProteinChange}</div>
                 ))}
             </div>
         );
     }
 
-    // Patient Genomic(i.e., BRAF V600E) info are matched to trial genomic alteration(i.e., BRAF Oncogenic Mutation).
-    // V600E belongs to Oncogenic Mutation.
-    public getGenomicVariantCategoryMatch(genomicGroupMatch: IGenomicGroupMatch) {
+    public getGenomicAlteration(genomicGroupMatch: IGenomicGroupMatch) {
         return (
-            <If condition={genomicGroupMatch.matches.length > 1}>
-                <Then>
-                    <ul className={styles.alterationUl}>
-                        {genomicGroupMatch.matches.map((genomicMatch: IGenomicMatch) => (
-                            <li>{`${genomicMatch.trueHugoSymbol} ${genomicMatch.trueProteinChange} `}
-                                {genomicMatch.sampleIds.map((sampleId: string) => (
-                                    <span className={styles.genomicSpan}>
-                                        {this.props.sampleManager!.getComponentForSample(sampleId, 1, '')}
-                                    </span>
-                                ))}
-                            </li>
-                        ))}
-                    </ul>
-                </Then>
-                <Else>
-                    <span>{`${genomicGroupMatch.matches[0].trueHugoSymbol} ${genomicGroupMatch.matches[0].trueProteinChange} `}
-                        {genomicGroupMatch.matches[0].sampleIds.map((sampleId: string) => (
-                            <span className={styles.genomicSpan}>
-                                {this.props.sampleManager!.getComponentForSample(sampleId, 1, '')}
-                            </span>
-                        ))}
-                    </span>
-                </Else>
-            </If>
+            <div>{`${genomicGroupMatch.genomicAlteration} `}</div>
         );
     }
 
@@ -210,17 +248,14 @@ export default class TrialMatchTable extends React.Component<ITrialMatchProps> {
         return (
             <div className={styles.tooltip}>
                 {data.map((genomicGroupMatch: IGenomicGroupMatch) => (
-                    <div className={styles.genomicSpan}><b>Not </b>{`${genomicGroupMatch.genomicAlteration.replace(/!/g, '')} `}
-                        {genomicGroupMatch.matches[0].sampleIds.map((sampleId: string) => (
-                            <span className={styles.genomicSpan}>
-                                {this.props.sampleManager!.getComponentForSample(sampleId, 1, '')}
-                            </span>
-                        ))}
+                    <div className={styles.genomicSpan}>
+                        <b>Not </b>{`${genomicGroupMatch.genomicAlteration.replace(/!/g, '')} `}
                     </div>
                 ))}
             </div>
         );
     }
+
     public tooltipClinicalContent(data: string[]) {
         return (
             <div className={styles.tooltip}>
@@ -233,20 +268,15 @@ export default class TrialMatchTable extends React.Component<ITrialMatchProps> {
         );
     }
 
-    public mainContent(content: string) {
-        return (
-            <span>
-                <a>{content}</a>
-            </span>
-        );
-    }
-
-    public getHugoSymbolName(matches: IGenomicGroupMatch[], threshold: number) {
-        const hugoSymbolSet = new Set([...matches].map(x => x.genomicAlteration.split(' ')[0].slice(1)));
+    public getDescriptionForNotMatches(matches: IGenomicGroupMatch[], threshold: number, preContent: string, postContent: string) {
+        const hugoSymbolSet = new Set([...matches].map(x => x.genomicAlteration.split(' ')[0]));
+        let genomicAlterationContent = '';
         if (hugoSymbolSet.size <= threshold) {
-            return [...hugoSymbolSet].join(', ');
+            genomicAlterationContent = [...hugoSymbolSet].join(', ');
+        } else {
+            genomicAlterationContent = `${hugoSymbolSet.size} genes`;
         }
-        return `${hugoSymbolSet.size} genes`;
+        return `${preContent} ${genomicAlterationContent} ${postContent}`;
     }
 
     render() {

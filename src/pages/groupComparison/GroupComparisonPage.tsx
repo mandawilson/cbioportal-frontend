@@ -16,7 +16,7 @@ import GroupSelector from "./groupSelector/GroupSelector";
 import {getTabId, GroupComparisonTab} from "./GroupComparisonUtils";
 import styles from "./styles.module.scss";
 import {StudyLink} from "shared/components/StudyLink/StudyLink";
-import {action, IReactionDisposer, observable, reaction} from "mobx";
+import {action, computed, IReactionDisposer, observable, reaction} from "mobx";
 import autobind from "autobind-decorator";
 import {AppStore} from "../../AppStore";
 import _ from "lodash";
@@ -24,36 +24,28 @@ import ClinicalData from "./ClinicalData";
 import ReactSelect from "react-select";
 import {trackEvent} from "shared/lib/tracking";
 import URL from "url";
+import GroupComparisonURLWrapper, {GroupComparisonURLQuery} from "./GroupComparisonURLWrapper";
 
 export interface IGroupComparisonPageProps {
     routing:any;
     appStore:AppStore;
 }
 
-export type GroupComparisonURLQuery = {
-    sessionId: string;
-    groupOrder?:string; // json stringified array of names
-    unselectedGroups?:string; // json stringified array of names
-    overlapStrategy?:OverlapStrategy;
-};
-
 @inject('routing', 'appStore')
 @observer
 export default class GroupComparisonPage extends React.Component<IGroupComparisonPageProps, {}> {
     @observable.ref private store:GroupComparisonStore;
     private queryReaction:IReactionDisposer;
-    private pathnameReaction:IReactionDisposer;
-    private lastQuery:Partial<GroupComparisonURLQuery>;
+    private urlWrapper:GroupComparisonURLWrapper;
 
     constructor(props:IGroupComparisonPageProps) {
         super(props);
+        this.urlWrapper = new GroupComparisonURLWrapper(props.routing);
         this.queryReaction = reaction(
-            () => props.routing.location.query,
-            query => {
+            () => this.urlWrapper.query.sessionId,
+            sessionId => {
 
-                if (!props.routing.location.pathname.includes("/comparison") ||
-                    _.isEqual(query, this.lastQuery) ||
-                    (this.lastQuery && (query.sessionId === this.lastQuery.sessionId))) {
+                if (!props.routing.location.pathname.includes("/comparison") || !sessionId) {
                     return;
                 }
 
@@ -61,24 +53,8 @@ export default class GroupComparisonPage extends React.Component<IGroupCompariso
                     this.store.destroy();
                 }
 
-                this.store = new GroupComparisonStore((query as GroupComparisonURLQuery).sessionId, this.props.appStore, this.props.routing);
-                this.setTabIdInStore(props.routing.location.pathname);
+                this.store = new GroupComparisonStore(sessionId, this.props.appStore, this.urlWrapper);
                 (window as any).groupComparisonStore = this.store;
-
-                this.lastQuery = query;
-            },
-            {fireImmediately: true}
-        );
-
-        this.pathnameReaction = reaction(
-            () => props.routing.location.pathname,
-            pathname => {
-
-                if (!pathname.includes("/comparison")) {
-                    return;
-                }
-
-                this.setTabIdInStore(pathname);
             },
             {fireImmediately: true}
         );
@@ -95,21 +71,14 @@ export default class GroupComparisonPage extends React.Component<IGroupCompariso
         });
     }
 
-    private setTabIdInStore(pathname:string) {
-        const tabId = getTabId(pathname);
-        if (tabId) {
-            this.store.setTabId(tabId);
-        }
-    }
-
-    @autobind
-    private setTabIdInUrl(id:string, replace?:boolean) {
-        this.props.routing.updateRoute({},`comparison/${id}`, false, replace);
+    @computed get selectedGroupsKey() {
+        // for components which should remount whenever selected groups change
+        const selectedGroups = this.store._selectedGroups.result || [];
+        return JSON.stringify(selectedGroups.map(g=>g.uid));
     }
 
     componentWillUnmount() {
         this.queryReaction && this.queryReaction();
-        this.pathnameReaction && this.pathnameReaction();
         this.store && this.store.destroy();
     }
 
@@ -126,50 +95,53 @@ export default class GroupComparisonPage extends React.Component<IGroupCompariso
         render:()=>{
             return (
                 <MSKTabs unmountOnHide={false}
-                         activeTabId={this.store.currentTabId}
-                         onTabClick={this.setTabIdInUrl}
+                         activeTabId={this.urlWrapper.tabId}
+                         onTabClick={this.urlWrapper.setTabId}
                          className="primaryTabs mainTabs"
                          getTabHref={this.getTabHref}
                 >
                     <MSKTab id={GroupComparisonTab.OVERLAP} linkText="Overlap">
-                        <Overlap store={this.store}/>
+                        <Overlap
+                            key={this.selectedGroupsKey}
+                            store={this.store}
+                        />
                     </MSKTab>
                     {
                         this.store.showSurvivalTab &&
                         <MSKTab id={GroupComparisonTab.SURVIVAL} linkText="Survival"
-                                anchorClassName={this.store.survivalTabGrey ? "greyedOut" : ""}
+                                anchorClassName={this.store.survivalTabUnavailable ? "greyedOut" : ""}
                         >
                             <Survival store={this.store}/>
                         </MSKTab>
                     }
                     <MSKTab id={GroupComparisonTab.CLINICAL} linkText="Clinical"
-                        anchorClassName={this.store.clinicalTabGrey ? "greyedOut" : ""}>
+                        anchorClassName={this.store.clinicalTabUnavailable ? "greyedOut" : ""}>
                         <ClinicalData store={this.store}/>
                     </MSKTab>
                     {this.store.showMutationsTab && (
                         <MSKTab id={GroupComparisonTab.MUTATIONS} linkText="Mutations"
-                            anchorClassName={this.store.mutationsTabGrey ? "greyedOut" : ""}
+                            anchorClassName={this.store.mutationsTabUnavailable ? "greyedOut" : ""}
                         >
                             <MutationEnrichments store={this.store}/>
                         </MSKTab>
                     )}
                     {this.store.showCopyNumberTab && (
                         <MSKTab id={GroupComparisonTab.CNA} linkText="Copy-number"
-                            anchorClassName={this.store.copyNumberTabGrey ? "greyedOut" : ""}
+                            anchorClassName={this.store.copyNumberUnavailable ? "greyedOut" : ""}
                         >
                             <CopyNumberEnrichments store={this.store}/>
                         </MSKTab>
                     )}
                     {this.store.showMRNATab && (
                         <MSKTab id={GroupComparisonTab.MRNA} linkText="mRNA"
-                            anchorClassName={this.store.mRNATabGrey ? "greyedOut" : ""}
+                            anchorClassName={this.store.mRNATabUnavailable ? "greyedOut" : ""}
                         >
                             <MRNAEnrichments store={this.store}/>
                         </MSKTab>
                     )}
                     {this.store.showProteinTab && (
                         <MSKTab id={GroupComparisonTab.PROTEIN} linkText="Protein"
-                            anchorClassName={this.store.proteinTabGrey ? "greyedOut" : ""}
+                            anchorClassName={this.store.proteinTabUnavailable ? "greyedOut" : ""}
                         >
                             <ProteinEnrichments store={this.store}/>
                         </MSKTab>

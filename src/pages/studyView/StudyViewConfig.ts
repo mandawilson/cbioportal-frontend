@@ -23,7 +23,6 @@ export type StudyViewColorTheme = {
 export type StudyViewThreshold = {
     pieToTable: number,
     piePadding: number,
-    escapeTick: number,
     barRatio: number,
     rowsInTableForOneGrid: number,
     clinicalCharts: number,
@@ -66,6 +65,7 @@ export enum ChartTypeEnum {
     TABLE = 'TABLE',
     SCATTER = 'SCATTER',
     MUTATED_GENES_TABLE = 'MUTATED_GENES_TABLE',
+    FUSION_GENES_TABLE = 'FUSION_GENES_TABLE',
     CNA_GENES_TABLE = 'CNA_GENES_TABLE',
     NONE = 'NONE'
 }
@@ -77,6 +77,7 @@ export enum ChartTypeNameEnum {
     TABLE = 'table',
     SCATTER = 'density plot',
     MUTATED_GENES_TABLE = 'table',
+    FUSION_GENES_TABLE = 'table',
     CNA_GENES_TABLE = 'table',
     NONE = 'none'
 }
@@ -99,6 +100,7 @@ const studyViewFrontEnd = {
         "DFS_SURVIVAL": 300,
         "MUTATION_COUNT_CNA_FRACTION": 200,
         "MUTATED_GENES_TABLE": 90,
+        "FUSION_GENES_TABLE": 85,
         "CNA_GENES_TABLE": 80,
         "CANCER_STUDIES": 70,
         "SEQUENCED": 60,
@@ -130,7 +132,6 @@ const studyViewFrontEnd = {
     thresholds: {
         pieToTable: 20,
         piePadding: 20,
-        escapeTick: 10,
         barRatio: 0.8,
         rowsInTableForOneGrid: 4,
         clinicalCharts: 20,
@@ -169,6 +170,10 @@ const studyViewFrontEnd = {
                 h: 2
             },
             [ChartTypeEnum.MUTATED_GENES_TABLE]: {
+                w: 2,
+                h: 2
+            },
+            [ChartTypeEnum.FUSION_GENES_TABLE]: {
                 w: 2,
                 h: 2
             },

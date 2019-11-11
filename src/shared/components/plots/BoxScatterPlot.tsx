@@ -1,6 +1,6 @@
 import * as React from "react";
 import {observer, Observer} from "mobx-react";
-import {computed, observable} from "mobx";
+import {computed, observable, action} from "mobx";
 import {bind} from "bind-decorator";
 import CBIOPORTAL_VICTORY_THEME, {axisTickLabelStyles} from "../../theme/cBioPoralTheme";
 import ifndef from "../../lib/ifndef";
@@ -15,6 +15,13 @@ import {tickFormatNumeral, wrapTick} from "./TickUtils";
 import {makeScatterPlotSizeFunction} from "./PlotUtils";
 import {getTextWidth} from "../../../public-lib/lib/TextTruncationUtils";
 import autobind from "autobind-decorator";
+import { dataPointIsLimited } from 'shared/components/plots/PlotUtils';
+import _ from "lodash";
+import { IAxisLogScaleParams, IBoxScatterPlotPoint } from "pages/resultsView/plots/PlotsTabUtils";
+import { Popover } from "react-bootstrap";
+import * as ReactDOM from "react-dom";
+import classnames from "classnames";
+import WindowStore from "../window/WindowStore";
 
 export interface IBaseBoxScatterPlotPoint {
     value:number;
@@ -42,9 +49,11 @@ export interface IBoxScatterPlotProps<D extends IBaseBoxScatterPlotPoint> {
     strokeWidth?:number | ((d:D)=>number);
     zIndexSortBy?:((d:D)=>any)[]; // second argument to _.sortBy
     symbol?: string | ((d:D)=>string); // see http://formidable.com/open-source/victory/docs/victory-scatter/#symbol for options
-    tooltip?:(d:D)=>JSX.Element;
+    scatterPlotTooltip?:(d:D)=>JSX.Element;
+    boxPlotTooltip?:(d:BoxModel)=>JSX.Element;
     legendData?:{name:string|string[], symbol:any}[]; // see http://formidable.com/open-source/victory/docs/victory-legend/#data
-    logScale?:boolean; // log scale along the point data axis
+    logScale?:IAxisLogScaleParams|undefined; // log scale along the point data axis
+    excludeLimitValuesFromBoxPlot?:boolean;
     axisLabelX?:string;
     axisLabelY?:string;
     horizontal?:boolean; // whether the box plot is horizontal
@@ -67,13 +76,14 @@ type BoxModel = {
 const RIGHT_GUTTER = 120; // room for legend
 const NUM_AXIS_TICKS = 8;
 const PLOT_DATA_PADDING_PIXELS = 100;
-const MIN_LOG_ARGUMENT = 0.01;
 const CATEGORY_LABEL_HORZ_ANGLE = 50;
 const DEFAULT_LEFT_PADDING = 25;
 const DEFAULT_BOTTOM_PADDING = 10;
 const LEGEND_ITEMS_PER_ROW = 4;
 const BOTTOM_LEGEND_PADDING = 15;
 const RIGHT_PADDING_FOR_LONG_LABELS = 50;
+const HORIZONTAL_OFFSET = 8;
+const VERTICAL_OFFSET = 17;
 
 
 const BOX_STYLES = {
@@ -86,11 +96,12 @@ const BOX_STYLES = {
 
 @observer
 export default class BoxScatterPlot<D extends IBaseBoxScatterPlotPoint> extends React.Component<IBoxScatterPlotProps<D>, {}> {
-    @observable.ref tooltipModel:any|null = null;
-    @observable pointHovered:boolean = false;
+    @observable.ref private scatterPlotTooltipModel:any|null = null;
+    @observable private pointHovered:boolean = false;
     private mouseEvents:any = this.makeMouseEvents();
-
     @observable.ref private container:HTMLDivElement;
+    @observable.ref private boxPlotTooltipModel: any | null;
+    @observable private mousePosition = { x:0, y:0 };
 
     @bind
     private containerRef(container:HTMLDivElement) {
@@ -109,7 +120,7 @@ export default class BoxScatterPlot<D extends IBaseBoxScatterPlotPoint> extends 
                         {
                             target: "data",
                             mutation: (props: any) => {
-                                this.tooltipModel = props;
+                                this.scatterPlotTooltipModel = props;
                                 this.pointHovered = true;
 
                                 if (disappearTimeout !== null) {
@@ -142,6 +153,36 @@ export default class BoxScatterPlot<D extends IBaseBoxScatterPlotPoint> extends 
                 }
             }
         }];
+    }
+
+    private get boxPlotEvents() {
+        if (this.props.boxPlotTooltip) {
+            const self = this;
+            return [{
+                target: ["min", "max", "media", "q1", "q3"],
+                eventHandlers: {
+                    onMouseEnter: () => {
+                        return [
+                            {
+                                mutation: (props: any) => {
+                                    self.boxPlotTooltipModel = props;
+                                }
+                            }
+                        ];
+                    },
+                    onMouseLeave: () => {
+                        return [
+                            {
+                                mutation: () => {
+                                    self.boxPlotTooltipModel = null;
+                                }
+                            }
+                        ];
+                    }
+                }
+            }];
+        }
+        return [];
     }
 
     private get title() {
@@ -244,8 +285,8 @@ export default class BoxScatterPlot<D extends IBaseBoxScatterPlotPoint> extends 
             }
         }
         if (this.props.logScale) {
-            min = this.logScale(min);
-            max = this.logScale(max);
+            min = this.props.logScale.fLogScale(min, 0);
+            max = this.props.logScale.fLogScale(max, 0);
         }
         if (this.props.startDataAxisAtZero) {
             min = Math.min(0, min);
@@ -328,19 +369,15 @@ export default class BoxScatterPlot<D extends IBaseBoxScatterPlotPoint> extends 
         return this.props.boxWidth || 10;
     }
 
-    @computed get boxWidthDataSpace() {
-        return this.boxWidth * (this.props.horizontal ? ((this.plotDomain.y[1] - this.plotDomain.y[0])/this.chartHeight) : ((this.plotDomain.x[1] - this.plotDomain.x[0])/this.chartWidth));
-    }
-
-    private jitter(d:D, randomNumber:number) {
+    private jitter(d: D, randomNumber: number) {
         // randomNumber: between -1 and 1
-        return 0.5*this.boxWidthDataSpace * randomNumber;
+        return 0.2 * this.boxWidth * randomNumber;
     }
 
     @bind
     private scatterPlotX(d:IBaseScatterPlotData & D) {
         if (this.props.logScale && this.props.horizontal) {
-            return this.logScale(d.x);
+            return this.props.logScale.fLogScale(d.x, 0);
         } else {
             let jitter = 0;
             if (!this.props.horizontal) {
@@ -357,7 +394,7 @@ export default class BoxScatterPlot<D extends IBaseBoxScatterPlotPoint> extends 
     @bind
     private scatterPlotY(d:IBaseScatterPlotData & D) {
         if (this.props.logScale && !this.props.horizontal) {
-            return this.logScale(d.y);
+            return this.props.logScale.fLogScale(d.y, 0);
         } else {
             let jitter = 0;
             if (this.props.horizontal) {
@@ -390,7 +427,7 @@ export default class BoxScatterPlot<D extends IBaseBoxScatterPlotPoint> extends 
 
     @bind
     private formatNumericalTick(t:number, i:number, ticks:number[]) {
-        return tickFormatNumeral(t, ticks, (this.props.logScale && !this.props.useLogSpaceTicks) ? x=>this.invLogScale(x) : undefined);
+        return tickFormatNumeral(t, ticks, (this.props.logScale && !this.props.useLogSpaceTicks) ? this.props.logScale.fInvLogScale : undefined);
     }
 
     @computed get horzAxis() {
@@ -398,6 +435,9 @@ export default class BoxScatterPlot<D extends IBaseBoxScatterPlotPoint> extends 
         //  this axis is for numbers, not categories
         return (
             <VictoryAxis
+                style={{
+                    grid: {strokeOpacity: 1}
+                }}
                 orientation="bottom"
                 offsetY={50}
                 crossAxis={false}
@@ -451,6 +491,7 @@ export default class BoxScatterPlot<D extends IBaseBoxScatterPlotPoint> extends 
             ifndef(this.props.strokeWidth, 0),
             ifndef(this.props.strokeOpacity, 1),
             ifndef(this.props.fillOpacity, 1),
+            ifndef(this.props.symbol, "circle"),
             this.props.zIndexSortBy
         );
     }
@@ -506,14 +547,6 @@ export default class BoxScatterPlot<D extends IBaseBoxScatterPlotPoint> extends 
         }
     }
 
-    private logScale(x:number) {
-        return Math.log2(Math.max(x, MIN_LOG_ARGUMENT));
-    }
-
-    private invLogScale(x:number) {
-        return Math.pow(2, x);
-    }
-
     private categoryCoord(index:number) {
         return index * (this.boxWidth + this.boxSeparation); // half box + separation + half box
     }
@@ -524,11 +557,21 @@ export default class BoxScatterPlot<D extends IBaseBoxScatterPlotPoint> extends 
 
     @computed get boxPlotData():BoxModel[] {
         const boxCalculationFilter = this.props.boxCalculationFilter;
-        return this.props.data.map(d=>calculateBoxPlotModel(d.data.reduce((data, next)=>{
+
+        // when limit values are shown in the legend, exclude
+        // these points from influencing the shape of the box plots
+        let boxData = _.cloneDeep(this.props.data);
+        if (this.props.excludeLimitValuesFromBoxPlot) {
+            _.each(boxData, (o:IBoxScatterPlotData<D>) => {
+                 o.data = _.filter(o.data, (p:IBoxScatterPlotPoint) => ! dataPointIsLimited(p) );
+            })
+        }
+
+        return boxData.map(d=>calculateBoxPlotModel(d.data.reduce((data, next)=>{
             if (!boxCalculationFilter || (boxCalculationFilter && boxCalculationFilter(next))) {
                 // filter out values in calculating boxes, if a filter is specified ^^
                 if (this.props.logScale) {
-                    data.push(this.logScale(next.value));
+                    data.push(this.props.logScale.fLogScale(next.value, 0));
                 } else {
                     data.push(next.value);
                 }
@@ -562,6 +605,15 @@ export default class BoxScatterPlot<D extends IBaseBoxScatterPlotPoint> extends 
     }
 
     @autobind
+    @action
+    private onMouseMove(e: React.MouseEvent<any>) {
+        if (this.boxPlotTooltipModel !== null) {
+            this.mousePosition.x = e.pageX;
+            this.mousePosition.y = e.pageY;
+        }
+    }
+
+    @autobind
     private getChart() {
         return (
             <div
@@ -579,6 +631,7 @@ export default class BoxScatterPlot<D extends IBaseBoxScatterPlotPoint> extends 
                     width={this.svgWidth}
                     role="img"
                     viewBox={`0 0 ${this.svgWidth} ${this.svgHeight}`}
+                    onMouseMove={this.onMouseMove}
                 >
                     <g
                         transform={`translate(${this.leftPadding}, ${this.topPadding})`}
@@ -604,10 +657,11 @@ export default class BoxScatterPlot<D extends IBaseBoxScatterPlotPoint> extends 
                                 style={BOX_STYLES}
                                 data={this.boxPlotData}
                                 horizontal={this.props.horizontal}
+                                events={this.boxPlotEvents}
                             />
                             {this.scatterPlotData.map(dataWithAppearance=>(
                                 <VictoryScatter
-                                    key={`${dataWithAppearance.fill},${dataWithAppearance.stroke},${dataWithAppearance.strokeWidth},${dataWithAppearance.strokeOpacity},${dataWithAppearance.fillOpacity}`}
+                                    key={`${dataWithAppearance.fill},${dataWithAppearance.stroke},${dataWithAppearance.strokeWidth},${dataWithAppearance.strokeOpacity},${dataWithAppearance.fillOpacity},${dataWithAppearance.symbol}`}
                                     style={{
                                         data: {
                                             fill: dataWithAppearance.fill,
@@ -618,7 +672,7 @@ export default class BoxScatterPlot<D extends IBaseBoxScatterPlotPoint> extends 
                                         }
                                     }}
                                     size={this.scatterPlotSize}
-                                    symbol={this.props.symbol || "circle"}
+                                    symbol={dataWithAppearance.symbol}
                                     data={dataWithAppearance.data}
                                     events={this.mouseEvents}
                                     x={this.scatterPlotX}
@@ -633,15 +687,15 @@ export default class BoxScatterPlot<D extends IBaseBoxScatterPlotPoint> extends 
     }
 
     @autobind
-    private getTooltip() {
-        if (this.container && this.tooltipModel && this.props.tooltip) {
+    private getScatterPlotTooltip() {
+        if (this.container && this.scatterPlotTooltipModel && this.props.scatterPlotTooltip) {
             return (
                 <ScatterPlotTooltip
                     placement={this.props.horizontal ? "bottom" : "right"}
                     container={this.container}
                     targetHovered={this.pointHovered}
-                    targetCoords={{x: this.tooltipModel.x + this.leftPadding, y: this.tooltipModel.y + this.topPadding}}
-                    overlay={this.props.tooltip(this.tooltipModel.datum)}
+                    targetCoords={{x: this.scatterPlotTooltipModel.x + this.leftPadding, y: this.scatterPlotTooltipModel.y + this.topPadding}}
+                    overlay={this.props.scatterPlotTooltip(this.scatterPlotTooltipModel.datum)}
                 />
             );
         } else {
@@ -649,6 +703,33 @@ export default class BoxScatterPlot<D extends IBaseBoxScatterPlotPoint> extends 
         }
     }
 
+    @autobind
+    private getBoxPlotTooltipComponent() {
+        if (this.container && this.boxPlotTooltipModel && this.props.boxPlotTooltip) {
+            const maxWidth = 400;
+            let tooltipPlacement = (this.mousePosition.x > WindowStore.size.width - maxWidth ? "left" : "right");
+            return (ReactDOM as any).createPortal(
+                <Popover
+                    arrowOffsetTop={VERTICAL_OFFSET}
+                    className={classnames("cbioportal-frontend", "cbioTooltip")}
+                    positionLeft={this.mousePosition.x + (tooltipPlacement === "left" ? -HORIZONTAL_OFFSET : HORIZONTAL_OFFSET)}
+                    positionTop={this.mousePosition.y - VERTICAL_OFFSET}
+                    style={{
+                        transform: (tooltipPlacement === "left" ? "translate(-100%,0%)" : undefined),
+                        maxWidth
+                    }}
+                    placement={tooltipPlacement}
+                >
+                    <div>
+                        {this.props.boxPlotTooltip(this.boxPlotTooltipModel.datum)}
+                    </div>
+                </Popover>,
+                document.body
+            );
+        } else {
+            return null;
+        }
+    }
 
     render() {
         if (!this.props.data.length) {
@@ -660,7 +741,10 @@ export default class BoxScatterPlot<D extends IBaseBoxScatterPlotPoint> extends 
                     {this.getChart}
                 </Observer>
                 <Observer>
-                    {this.getTooltip}
+                    {this.getScatterPlotTooltip}
+                </Observer>
+                <Observer>
+                    {this.getBoxPlotTooltipComponent}
                 </Observer>
             </div>
         );

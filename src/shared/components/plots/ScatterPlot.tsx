@@ -1,3 +1,4 @@
+import _ from "lodash";
 import * as React from "react";
 import {observer, Observer} from "mobx-react";
 import bind from "bind-decorator";
@@ -9,9 +10,10 @@ import jStat from "jStat";
 import ScatterPlotTooltip from "./ScatterPlotTooltip";
 import ifndef from "shared/lib/ifndef";
 import {tickFormatNumeral} from "./TickUtils";
-import {computeCorrelationPValue, makeScatterPlotSizeFunction, separateScatterDataByAppearance} from "./PlotUtils";
+import {computeCorrelationPValue, makeScatterPlotSizeFunction, separateScatterDataByAppearance, dataPointIsLimited as dataPointIsLimited} from "./PlotUtils";
 import {toConditionalPrecision} from "../../lib/NumberUtils";
 import {getRegressionComputations} from "./ScatterPlotUtils";
+import { IAxisLogScaleParams, IPlotSampleData } from 'pages/resultsView/plots/PlotsTabUtils';
 
 export interface IBaseScatterPlotData {
     x:number;
@@ -40,8 +42,9 @@ export interface IScatterPlotProps<D extends IBaseScatterPlotData> {
         spearman: number;
     };
     showRegressionLine?:boolean;
-    logX?:boolean;
-    logY?:boolean;
+    logX?:IAxisLogScaleParams|undefined;
+    logY?:IAxisLogScaleParams|undefined;
+    excludeLimitValuesFromCorrelation?:boolean; // if true, data points that are beyond threshold (e.g., '>8', have a `xThresholdType` or `yThresholdType` attribute) are not included in caluculation of the corr. efficient
     useLogSpaceTicks?:boolean; // if log scale for an axis, then this prop determines whether the ticks are shown in post-log coordinate, or original data coordinate space
     axisLabelX?:string;
     axisLabelY?:string;
@@ -59,7 +62,6 @@ const DEFAULT_FONT_FAMILY = "Verdana,Arial,sans-serif";
 const RIGHT_PADDING = 120; // room for correlation info and legend
 const NUM_AXIS_TICKS = 8;
 const PLOT_DATA_PADDING_PIXELS = 50;
-const MIN_LOG_ARGUMENT = 0.01;
 const LEFT_PADDING = 25;
 
 @observer
@@ -255,9 +257,16 @@ export default class ScatterPlot<D extends IBaseScatterPlotData> extends React.C
     } 
 
     @computed get splitData() {
+
+        // when limit values are shown in the legend, exclude
+        // these points from calculations of correlation coefficients
+        const data = this.props.excludeLimitValuesFromCorrelation?
+            _.filter(this.props.data, (d:IPlotSampleData)=>!dataPointIsLimited(d)):
+            this.props.data;
+
         const x = [];
         const y = [];
-        for (const d of this.props.data) {
+        for (const d of data) {
             x.push(d.x);
             y.push(d.y);
         }
@@ -275,12 +284,12 @@ export default class ScatterPlot<D extends IBaseScatterPlotData> extends React.C
             min.y = Math.min(d.y, min.y);
         }
         if (this.props.logX) {
-            min.x = this.logScale(min.x);
-            max.x = this.logScale(max.x);
+            min.x = this.props.logX.fLogScale(min.x, 0);
+            max.x = this.props.logX.fLogScale(max.x, 0);
         }
         if (this.props.logY) {
-            min.y = this.logScale(min.y);
-            max.y = this.logScale(max.y);
+            min.y = this.props.logY.fLogScale(min.y, 0);
+            max.y = this.props.logY.fLogScale(max.y, 0);
         }
         return {
             x: [min.x, max.x],
@@ -295,10 +304,10 @@ export default class ScatterPlot<D extends IBaseScatterPlotData> extends React.C
             let x = this.splitData.x;
             let y = this.splitData.y;
             if (this.props.logX) {
-                x = x.map(d=>this.logScale(d));
+                x = x.map(d=>this.props.logX!.fLogScale(d, 0));
             }
             if (this.props.logY) {
-                y = y.map(d=>this.logScale(d));
+                y = y.map(d=>this.props.logY!.fLogScale(d, 0));
             }
             return jStat.corrcoeff(x, y);
         }
@@ -333,18 +342,10 @@ export default class ScatterPlot<D extends IBaseScatterPlotData> extends React.C
         return this.props.chartHeight;
     }
 
-    private logScale(x:number) {
-        return Math.log2(Math.max(x, MIN_LOG_ARGUMENT));
-    }
-
-    private invLogScale(x:number) {
-        return Math.pow(2, x);
-    }
-
     @bind
     private x(d:D) {
         if (this.props.logX) {
-            return this.logScale(d.x);
+            return this.props.logX!.fLogScale(d.x, 0);
         } else {
             return d.x;
         }
@@ -353,7 +354,7 @@ export default class ScatterPlot<D extends IBaseScatterPlotData> extends React.C
     @bind
     private y(d:D) {
         if (this.props.logY) {
-            return this.logScale(d.y);
+            return this.props.logY!.fLogScale(d.y, 0);
         } else {
             return d.y;
         }
@@ -366,22 +367,22 @@ export default class ScatterPlot<D extends IBaseScatterPlotData> extends React.C
         return makeScatterPlotSizeFunction(highlight, size);
     }
 
-    private tickFormat(t:number, ticks:number[], logScale:boolean) {
-        if (logScale && !this.props.useLogSpaceTicks) {
-            t = this.invLogScale(t);
-            ticks = ticks.map(x=>this.invLogScale(x));
+    private tickFormat(t:number, ticks:number[], logScaleFunc:IAxisLogScaleParams|undefined) {
+        if (logScaleFunc && !this.props.useLogSpaceTicks) {
+            t = logScaleFunc.fInvLogScale(t);
+            ticks = ticks.map(x=>logScaleFunc.fInvLogScale(x));
         }
         return tickFormatNumeral(t, ticks);
     }
 
     @bind
     private tickFormatX(t:number, i:number, ticks:number[]) {
-        return this.tickFormat(t, ticks, !!this.props.logX);
+        return this.tickFormat(t, ticks, this.props.logX);
     }
 
     @bind
     private tickFormatY(t:number, i:number, ticks:number[]) {
-        return this.tickFormat(t, ticks, !!this.props.logY);
+        return this.tickFormat(t, ticks, this.props.logY);
     }
 
     @computed get data() {
@@ -392,6 +393,7 @@ export default class ScatterPlot<D extends IBaseScatterPlotData> extends React.C
             ifndef(this.props.strokeWidth, 0),
             ifndef(this.props.strokeOpacity, 1),
             ifndef(this.props.fillOpacity, 1),
+            ifndef(this.props.symbol, "circle"),
             this.props.zIndexSortBy
         );
     }
@@ -402,7 +404,13 @@ export default class ScatterPlot<D extends IBaseScatterPlotData> extends React.C
     }
 
     private get regressionLine() {
-        if (this.props.showRegressionLine && this.props.data.length >= 2) {
+        // when limit values are shown in the legend, exclude
+        // these points from calculation of regression line
+        const regressionData:D[] = this.props.excludeLimitValuesFromCorrelation?
+        _.filter(this.props.data, (d:IPlotSampleData)=>!dataPointIsLimited(d)):
+        this.props.data;
+
+        if (this.props.showRegressionLine && regressionData.length >= 2) {
             const regressionLineComputations = this.regressionLineComputations;
             const y = (x:number)=>regressionLineComputations.predict(x)[1];
             const labelX = 0.7;
@@ -487,7 +495,7 @@ export default class ScatterPlot<D extends IBaseScatterPlotData> extends React.C
                             />
                             { this.data.map(dataWithAppearance=>(
                                 <VictoryScatter
-                                    key={`${dataWithAppearance.fill},${dataWithAppearance.stroke},${dataWithAppearance.strokeWidth},${dataWithAppearance.strokeOpacity},${dataWithAppearance.fillOpacity}`}
+                                    key={`${dataWithAppearance.fill},${dataWithAppearance.stroke},${dataWithAppearance.strokeWidth},${dataWithAppearance.strokeOpacity},${dataWithAppearance.fillOpacity},${dataWithAppearance.symbol}`}
                                     style={{
                                         data: {
                                             fill: dataWithAppearance.fill,
@@ -498,7 +506,7 @@ export default class ScatterPlot<D extends IBaseScatterPlotData> extends React.C
                                         }
                                     }}
                                     size={this.size}
-                                    symbol={this.props.symbol || "circle"}
+                                    symbol={dataWithAppearance.symbol}
                                     data={dataWithAppearance.data}
                                     events={this.mouseEvents}
                                     x={this.x}

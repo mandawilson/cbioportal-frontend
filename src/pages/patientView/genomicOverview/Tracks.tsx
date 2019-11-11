@@ -1,10 +1,11 @@
 import * as React from 'react';
 import * as ReactDOM from 'react-dom';
 import * as _ from 'lodash';
-import * as tracksHelper from './tracksHelper'
+import * as tracksHelper from './tracksHelper';
 import {CopyNumberSeg, Mutation, Sample} from 'shared/api/generated/CBioPortalAPI';
-import SampleManager from "../sampleManager";
+import SampleManager from "../SampleManager";
 import {ClinicalDataBySampleId} from "../../../shared/api/api-types-extended";
+import { IKeyedIconData, IIconData } from './GenomicOverviewUtils';
 
 interface TracksPropTypes {
     mutations:Array<Mutation>;
@@ -12,16 +13,31 @@ interface TracksPropTypes {
     sampleManager:SampleManager;
     samples:Sample[];
     width:number;
+    mutationGenePanelIconData?:IKeyedIconData;
+    copyNumberGenePanelIconData?:IKeyedIconData;
 }
+
+export const DEFAULT_GENOME_BUILD="GRCh37";
+
 
 export default class Tracks extends React.Component<TracksPropTypes, {}> {
 
     componentDidMount() {
+        this.drawTracks();
+    }
+
+    componentDidUpdate() {
+        this.drawTracks();
+    }
+
+    drawTracks() {
 
         // --- construct params ---
         let cnaSamples = _.keyBy(this.props.samples.filter(s=>s.copyNumberSegmentPresent), s=>s.sampleId);
         let mutSamples = _.keyBy(this.props.samples.filter(s=>s.sequenced), s=>s.sampleId);
-        var config = tracksHelper.GenomicOverviewConfig(Object.keys(cnaSamples).length + Object.keys(mutSamples).length, this.props.width);
+        const showGenePanelIcons = !!((this.props.mutationGenePanelIconData   && _.keys(this.props.mutationGenePanelIconData  ).length > 0)
+                                   || (this.props.copyNumberGenePanelIconData && _.keys(this.props.copyNumberGenePanelIconData).length > 0));
+        var config = tracksHelper.GenomicOverviewConfig(Object.keys(cnaSamples).length + Object.keys(mutSamples).length, this.props.width, showGenePanelIcons);
         // --- end of params ---
 
         // --- raphael config ---
@@ -30,12 +46,20 @@ export default class Tracks extends React.Component<TracksPropTypes, {}> {
         // --- end of raphael config ---
 
         // --- chromosome chart ---
-        var chmInfo = tracksHelper.getChmInfo();
-        tracksHelper.plotChromosomes(paper,config,chmInfo);
+        let genomeBuild = DEFAULT_GENOME_BUILD;
+        if (this.props.mutations && this.props.mutations.length > 0) {
+            genomeBuild = this.props.mutations[0].ncbiBuild;
+        }
+        const chmInfo = tracksHelper.getChmInfo( genomeBuild);
+        tracksHelper.plotChromosomes(paper,config,chmInfo, genomeBuild);
         // --- end of chromosome chart ---
 
-
         _.each(this.props.sampleManager.samples, (sample: ClinicalDataBySampleId) => {
+
+            let genePanelIconData:IIconData =  {} as IIconData;
+            if (this.props.mutationGenePanelIconData) {
+                genePanelIconData = this.props.mutationGenePanelIconData[sample.id];
+            }
 
             // --- CNA bar chart ---
             if (cnaSamples[sample.id]) {
@@ -53,12 +77,12 @@ export default class Tracks extends React.Component<TracksPropTypes, {}> {
                     _tmp.push(_dataObj.segmentMean);
                     raphaelData.push(_tmp);
                 });
-                tracksHelper.plotCnSegs(paper, config, chmInfo, rowIndex, raphaelData, 1, 3, 2, 5, sample.id);
+                tracksHelper.plotCnSegs(paper, config, chmInfo, rowIndex, raphaelData, 1, 3, 2, 5, sample.id, genePanelIconData);
                 rowIndex = rowIndex + 1;
 
                 if (this.props.sampleManager.samples.length > 1) {
                     const $container = $(`[id="cnaTrack${sample.id}"]`);
-                    const pos = {x: parseInt($container.attr('x')) - 10, y: parseInt($container.attr('y')) - 5};
+                    const pos = {x: parseInt($container.attr('x')!) - 10, y: parseInt($container.attr('y')!) - 5};
                     const $newContainer = $('<svg height="12" width="12" />').attr(pos);
                     $container.replaceWith($newContainer);
 
@@ -73,20 +97,25 @@ export default class Tracks extends React.Component<TracksPropTypes, {}> {
         });
         // --- end of CNA bar chart ---
 
-
         // --- mutation events bar chart ---
         _.each(this.props.sampleManager.samples, (sample: ClinicalDataBySampleId) => {
+ 
+            let genePanelIconData:IIconData =  {} as IIconData;
+            if (this.props.mutationGenePanelIconData) {
+                genePanelIconData = this.props.mutationGenePanelIconData[sample.id];
+            }
+
             if (mutSamples[sample.id]) {
                 var _trackData = _.filter(this.props.mutations, function (_mutObj: any) {
                     return _mutObj.sampleId === sample.id;
                 });
-                tracksHelper.plotMuts(paper, config, chmInfo, rowIndex, _trackData, sample.id);
+                tracksHelper.plotMuts(paper, config, chmInfo, rowIndex, _trackData, sample.id, genePanelIconData);
                 rowIndex = rowIndex + 1;
 
                 if (this.props.sampleManager.samples.length > 1) {
                     const id = `mutTrack${sample.id}`;
                     const $container = $(`[id="${id}"]`);
-                    const pos = {x: parseInt($container.attr('x')) - 10, y: parseInt($container.attr('y')) - 5};
+                    const pos = {x: parseInt($container.attr('x')!) - 10, y: parseInt($container.attr('y')!) - 5};
                     const $newContainer = $(`<svg id="${id}" height="12" width="12" />`);
                     $newContainer.attr(pos);
                     $container.replaceWith($newContainer);
@@ -101,12 +130,7 @@ export default class Tracks extends React.Component<TracksPropTypes, {}> {
             };
         });
         // --- end of mutation events bar chart ---
-
-
-
-
     }
-
 
     public render() {
         return (

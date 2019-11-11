@@ -5,6 +5,7 @@ import {
     calculateNewLayoutForFocusedChart,
     chartMetaComparator,
     clinicalDataCountComparator,
+    customBinsAreValid,
     filterCategoryBins,
     filterIntervalBins,
     filterNumericalBins,
@@ -38,6 +39,7 @@ import {
     isLogScaleByValues,
     isOccupied,
     makePatientToClinicalAnalysisGroup,
+    mutationCountVsCnaTooltip,
     needAdditionShiftForLogScaleBarChart,
     pickClinicalDataColors,
     showOriginStudiesInSummaryDescription,
@@ -47,8 +49,10 @@ import {
     StudyViewFilterWithSampleIdentifierFilters,
     ChartMeta,
     ChartMetaDataTypeEnum,
-    getStudyViewTabId, ChartType,
-    customBinsAreValid
+    getStudyViewTabId,
+    formatRange,
+    getBinName,
+    getGroupedClinicalDataByBins,
 } from 'pages/studyView/StudyViewUtils';
 import {
     ClinicalDataIntervalFilterValue,
@@ -70,6 +74,8 @@ import {VirtualStudy} from 'shared/model/VirtualStudy';
 import {ChartDimension, ChartTypeEnum} from "./StudyViewConfig";
 import {MobxPromise} from "mobxpromise";
 import {CLI_NO_COLOR, CLI_YES_COLOR, DEFAULT_NA_COLOR, RESERVED_CLINICAL_VALUE_COLORS} from "shared/lib/Colors";
+import { IStudyViewDensityScatterPlotDatum } from './charts/scatterPlot/StudyViewDensityScatterPlot';
+import { shallow } from 'enzyme';
 
 describe('StudyViewUtils', () => {
     const emptyStudyViewFilter: StudyViewFilter = {
@@ -148,6 +154,7 @@ describe('StudyViewUtils', () => {
                     }]
                 }],
                 mutatedGenes: [{ "entrezGeneIds": [1] }],
+                fusionGenes: [{ "entrezGeneIds": [1] }],
                 cnaGenes: [{ "alterations": [{ "entrezGeneId": 2, "alteration": -2 }] }],
                 studyIds: ['study1', 'study2'],
                 sampleIdentifiers: [],
@@ -182,8 +189,8 @@ describe('StudyViewUtils', () => {
                     },
                     genes
                 ).startsWith('4 samples from 2 studies:\n- Study 1 (2 samples)\n- Study 2 (2 samples)\n\nFilters:\n- CNA Genes:\n' +
-                '  - GENE2-DEL\n- Mutated Genes:\n  - GENE1\nWith Mutation data: NO\nWith CNA data: NO\n- attribute1 name: value1\n' +
-                '- attribute2 name: 10 < x ≤ 0\n- attribute3 name: 2 samples\n\nCreated on'));                   
+                '  - GENE2-DEL\n- Mutated Genes:\n  - GENE1\n- Fusion Genes:\n  - GENE1\nWith Mutation data: NO\nWith CNA data: NO\n- attribute1 name: value1\n' +
+                '- attribute2 name: 10 < x ≤ 0\n- attribute3 name: 2 samples\n\nCreated on'));
         });
         it('when username is not null', () => {
             assert.isTrue(
@@ -779,7 +786,7 @@ describe('StudyViewUtils', () => {
 
             const needAdditionShift = needAdditionShiftForLogScaleBarChart(numericalBins);
             assert.isFalse(needAdditionShift);
-            
+
             const normalizedNumericalData = generateNumericalData(numericalBins);
             assert.deepEqual(normalizedNumericalData.map(data => data.x),
                 [1.5, 2.5, 3.5, 5]);
@@ -1337,13 +1344,13 @@ describe('StudyViewUtils', () => {
         }
 
         it("Empty array should be returned when no attributes given", () => {
-            let layout: Layout[] = calculateLayout([], 6, visibleAttrsChartDimensions);
+            let layout: Layout[] = calculateLayout([], 6, visibleAttrsChartDimensions, []);
             assert.isArray(layout);
             assert.equal(layout.length, 0);
         });
 
         it("The layout is not expected - 1", () => {
-            let layout: Layout[] = calculateLayout(visibleAttrs, 6, visibleAttrsChartDimensions);
+            let layout: Layout[] = calculateLayout(visibleAttrs, 6, visibleAttrsChartDimensions, []);
             assert.equal(layout.length, 8);
             assert.equal(layout[0].i, 'test0');
             assert.equal(layout[0].x, 0);
@@ -1372,7 +1379,7 @@ describe('StudyViewUtils', () => {
         });
 
         it("The layout is not expected - 2", () => {
-            let layout: Layout[] = calculateLayout(visibleAttrs, 2, visibleAttrsChartDimensions);
+            let layout: Layout[] = calculateLayout(visibleAttrs, 2, visibleAttrsChartDimensions, []);
             assert.equal(layout.length, 8);
             assert.equal(layout[0].i, 'test0');
             assert.equal(layout[0].x, 0);
@@ -1424,7 +1431,7 @@ describe('StudyViewUtils', () => {
             visibleAttrsChartDimensions['test0'] = {w: 2, h: 2};
             visibleAttrsChartDimensions['test1'] = {w: 1, h: 1};
 
-            let layout: Layout[] = calculateLayout(visibleAttrs, 4, visibleAttrsChartDimensions);
+            let layout: Layout[] = calculateLayout(visibleAttrs, 4, visibleAttrsChartDimensions, []);
             assert.equal(layout.length, 2);
             assert.equal(layout[0].i, 'test1');
             assert.equal(layout[0].x, 0);
@@ -1469,7 +1476,7 @@ describe('StudyViewUtils', () => {
             visibleAttrsChartDimensions['test1'] = {w: 2, h: 2};
             visibleAttrsChartDimensions['test2'] = {w: 1, h: 1};
 
-            let layout: Layout[] = calculateLayout(visibleAttrs, 4, visibleAttrsChartDimensions);
+            let layout: Layout[] = calculateLayout(visibleAttrs, 4, visibleAttrsChartDimensions, []);
             assert.equal(layout.length, 3);
             assert.equal(layout[0].i, 'test0');
             assert.equal(layout[0].x, 0);
@@ -1539,7 +1546,7 @@ describe('StudyViewUtils', () => {
             visibleAttrsChartDimensions['test3'] = {w: 1, h: 1};
             visibleAttrsChartDimensions['test4'] = {w: 1, h: 1};
 
-            let layout: Layout[] = calculateLayout(visibleAttrs, 4, visibleAttrsChartDimensions);
+            let layout: Layout[] = calculateLayout(visibleAttrs, 4, visibleAttrsChartDimensions, []);
             assert.equal(layout.length, 5);
             assert.equal(layout[0].i, 'test0');
             assert.equal(layout[0].x, 0);
@@ -2106,7 +2113,7 @@ describe('StudyViewUtils', () => {
             assert.equal(newLayout.isResizable, false);
         });
     })
-    
+
     describe ('generateMatrixByLayout', () => {
         it('should return the generated matrix', () => {
             const layout = {
@@ -2154,7 +2161,7 @@ describe('StudyViewUtils', () => {
             w: 1,
             h: 1
         } as Layout
-    ];    
+    ];
 
     describe ('getPositionXByUniqueKey', () => {
         it('should return undefined for the not exist uniqueKey', () => {
@@ -2199,4 +2206,165 @@ describe('StudyViewUtils', () => {
             assert.isTrue(customBinsAreValid(['1', '2']));
         });
     })
+
+    describe("formatRange", () => {
+        it("should format min max range with no special value", () => {
+            const actual = formatRange(1.5, 2.5, undefined)
+            const expected = "1.5-2.5";
+            assert.equal(actual, expected);
+        });
+
+        it("should format min max range with special value", () => {
+            const actual = formatRange(1, 2, "Foo ");
+            const expected = "Foo 1-2";
+
+            assert.equal(actual, expected);
+        });
+
+        it("should format min range with special value", () => {
+            const acutal = formatRange(1, undefined, "<=");
+            const expected = "≤1";
+
+            assert.equal(acutal, expected);
+        });
+
+        it("should format max range with special value", () => {
+            const actual = formatRange(undefined, 2, ">=");
+            const expected = "≥2";
+
+            assert.equal(actual, expected);
+        });
+
+        it("should format min max range where min = max", () => {
+            const actual = formatRange(10, 10, undefined);
+            const expected = "10";
+
+            assert.equal(actual, expected);
+        });
+    });
+
+    describe("getBinName", () => {
+        it("should return correct bin name", () => {
+            assert.equal(getBinName({ specialValue:"NA" } as any), "NA");
+            assert.equal(getBinName({ start:10, end:20 } as any), "10-20");
+            assert.equal(getBinName({ start:10, specialValue:"<=" } as any), "<=10");
+            assert.equal(getBinName({ specialValue:">", end:20 } as any), ">20");
+        });
+    });
+
+    describe("getGroupedClinicalDataByBins", () => {
+
+        let clinicalData = [{
+            patientId: 'patient1',
+            sampleId: 'sample1',
+            studyId: 'study1',
+            uniquePatientKey: 'patient1',
+            value: 10
+        }, {
+            patientId: 'patient2',
+            sampleId: 'sample2',
+            studyId: 'study1',
+            uniquePatientKey: 'patient2',
+            value: 11
+        }, {
+            patientId: 'patient3',
+            sampleId: 'sample3',
+            studyId: 'study1',
+            uniquePatientKey: 'patient3',
+            value: 20
+        }, {
+            patientId: 'patient4',
+            sampleId: 'sample4',
+            studyId: 'study1',
+            uniquePatientKey: 'patient4',
+            value: 30
+        }, {
+            patientId: 'patient5',
+            sampleId: 'sample5',
+            studyId: 'study1',
+            uniquePatientKey: 'patient5',
+            value: 40
+        }, {
+            patientId: 'patient6',
+            sampleId: 'sample6',
+            studyId: 'study1',
+            uniquePatientKey: 'patient6',
+            value: 45
+        }, {
+            patientId: 'patient7',
+            sampleId: 'sample7',
+            studyId: 'study1',
+            uniquePatientKey: 'patient7',
+            value: 'NA'
+        }]
+
+        let dataBins = [{
+            'end': 10,
+            'specialValue': '<='
+        }, {
+            'start': 10,
+            'end': 20,
+        }, {
+            'start': 20,
+            'end': 40,
+        }, {
+            'start': 40,
+            'specialValue': '>'
+        }, {
+            'specialValue': 'NA'
+        }]
+
+
+        it("should return grouped clinicalData by bins", () => {
+            assert.deepEqual(getGroupedClinicalDataByBins(clinicalData as any, dataBins as any), {
+                "<=10": [{
+                    "patientId": "patient1",
+                    "sampleId": "sample1",
+                    "studyId": "study1",
+                    "uniquePatientKey": "patient1",
+                    "value": 10
+                }],
+                "10-20": [{
+                    "patientId": "patient2",
+                    "sampleId": "sample2",
+                    "studyId": "study1",
+                    "uniquePatientKey": "patient2",
+                    "value": 11
+                }, {
+                    "patientId": "patient3",
+                    "sampleId": "sample3",
+                    "studyId": "study1",
+                    "uniquePatientKey": "patient3",
+                    "value": 20
+                }],
+                "20-40": [{
+                    "patientId": "patient4",
+                    "sampleId": "sample4",
+                    "studyId": "study1",
+                    "uniquePatientKey": "patient4",
+                    "value": 30
+                }, {
+                    "patientId": "patient5",
+                    "sampleId": "sample5",
+                    "studyId": "study1",
+                    "uniquePatientKey": "patient5",
+                    "value": 40
+                }],
+                ">40": [{
+                    "patientId": "patient6",
+                    "sampleId": "sample6",
+                    "studyId": "study1",
+                    "uniquePatientKey": "patient6",
+                    "value": 45
+                }],
+                "NA": [{
+                    "patientId": "patient7",
+                    "sampleId": "sample7",
+                    "studyId": "study1",
+                    "uniquePatientKey": "patient7",
+                    "value": "NA"
+                }]
+            } as any);
+        });
+    });
 });

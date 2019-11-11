@@ -3,15 +3,20 @@ import $ from 'jquery';
 import * as _ from 'lodash';
 import 'qtip2';
 import 'qtip2/dist/jquery.qtip.css';
-import { Mutation } from "shared/api/generated/CBioPortalAPI";
+import {Mutation, ReferenceGenomeGene} from "shared/api/generated/CBioPortalAPI";
+import {DEFAULT_GENOME_BUILD} from "pages/patientView/genomicOverview/Tracks";
+import {default as chromosomeSizes} from "./chromosomeSizes.json";
+import { IIconData } from './GenomicOverviewUtils.js';
 
-export function GenomicOverviewConfig(nRows: any,width: any) {
+export function GenomicOverviewConfig(nRows: any,width: any, showGenePanelIcons:boolean) {
     let sel: any = {};
     sel.nRows = nRows;
     sel.canvasWidth = width;
     sel.wideLeftText = 25;
     sel.wideRightText = 35;
-    sel.GenomeWidth = sel.canvasWidth-sel.wideLeftText-sel.wideRightText;
+    sel.wideGenePanelIcon = 20;
+    sel.heigthGenePanelIcon = 18;
+    sel.GenomeWidth = showGenePanelIcons ? sel.canvasWidth-sel.wideLeftText-sel.wideRightText-sel.wideGenePanelIcon : sel.canvasWidth-sel.wideLeftText-sel.wideRightText;
     sel.pixelsPerBinMut = 3;
     sel.rowHeight = 20;
     sel.rowMargin = 5;
@@ -38,6 +43,12 @@ export function GenomicOverviewConfig(nRows: any,width: any) {
     sel.xRightText = function() {
         return sel.wideLeftText + sel.GenomeWidth+5;
     };
+    sel.xGenePanelIcon = function() {
+        return sel.xRightText() + 30;
+    };
+    sel.xGenePanelIconText = function() {
+        return sel.xRightText() + 30 + sel.wideGenePanelIcon/2;
+    };
     return sel;
 }
 
@@ -56,11 +67,38 @@ function getChmEndsPerc(chms: Array<any>, total: any) {
 /**
  * storing chromesome length info
  */
-export function getChmInfo() {
-    let sel: any = {};
-    sel.hg19 = [0,249250621,243199373,198022430,191154276,180915260,171115067,159138663,146364022,141213431,135534747,135006516,133851895,115169878,107349540,102531392,90354753,81195210,78077248,59128983,63025520,48129895,51304566,155270560,59373566];
-    sel.total = 3095677412;
-    sel.perc = getChmEndsPerc(sel.hg19,sel.total);
+export const genomeBuilds: Map<string, string> = new Map([
+    [ "hg19", "GRCh37" ],
+    [ "37", "GRCh37" ],
+    [ "hg38", "GRCh38" ],
+    [ "38", "GRCh38" ],
+    [ "mm10", "GRCm38" ]
+]);
+
+export type ChromosomeSizes = {
+    genomeBuild: string,
+    chromosomeSize: number[]
+};
+
+const referenceGenomeSizes:{[genomeBuild:string]:number[]} =
+    chromosomeSizes.reduce(
+            (map:{[genomeBuild:string]:number[]}, next:ChromosomeSizes)=>
+            { map[next.genomeBuild] = next.chromosomeSize || [];return map;},
+            {});
+
+export function getChmInfo(genomeBuild:string) {
+    const sel: any = {genomeRef:{}, total:0};
+    let referenceGenome = genomeBuilds.get(genomeBuild);
+    if (!referenceGenome || referenceGenome === "") {
+        referenceGenome = DEFAULT_GENOME_BUILD;
+    }
+    const genomeSize = referenceGenomeSizes[genomeBuild];
+    if (genomeSize) {
+        sel.genomeRef = genomeSize;
+        sel.total = _.sum(genomeSize);
+    }
+
+    sel.perc = getChmEndsPerc(sel.genomeRef,sel.total);
     sel.loc2perc = function(chm: any,loc: any) {
         return sel.perc[chm-1] + loc/sel.total;
     };
@@ -70,7 +108,7 @@ export function getChmInfo() {
     sel.perc2loc = function(xPerc: any,startChm: any) {
         var chm;
         if (!startChm) {//binary search
-            var low = 1, high = sel.hg19.length-1, i;
+            var low = 1, high = sel.genomeRef.length-1, i;
             while (low <= high) {
                 i = Math.floor((low + high) / 2);
                 if (sel.perc[i] >= xPerc)  {high = i - 1;}
@@ -79,7 +117,7 @@ export function getChmInfo() {
             chm = low;
         } else {//linear search
             var i;
-            for (i=startChm; i<sel.hg19.length; i++) {
+            for (i=startChm; i<sel.genomeRef.length; i++) {
                 if (xPerc<=sel.perc[i]) break;
             }
             chm = i;
@@ -92,7 +130,7 @@ export function getChmInfo() {
         return sel.perc2loc(xPerc,startChm);
     };
     sel.middle = function(chm: any, goConfig: any) {
-        var loc = sel.hg19[chm]/2;
+        var loc = sel.genomeRef[chm]/2;
         return sel.loc2xpixil(chm,loc,goConfig);
     };
     sel.chmName = function(chm: any) {
@@ -103,16 +141,21 @@ export function getChmInfo() {
     return sel;
 }
 
-export function plotChromosomes(p: any, config: any,chmInfo: any) {
+export function plotChromosomes(p: any, config: any,chmInfo: any, genomeBuild: any) {
     var yRuler = config.rowMargin+config.ticHeight;
     drawLine(config.wideLeftText,yRuler,config.wideLeftText+config.GenomeWidth,yRuler,p,'#000',1);
     // ticks & texts
-    for (var i=1; i<chmInfo.hg19.length; i++) {
+    for (var i=1; i<chmInfo.genomeRef.length; i++) {
+        if (chmInfo.genomeRef[i] === 0 && genomeBuild === "GRCm38") {
+            // Do not display chromosomes 20, 21 and 22 in mouse, they do not exist
+            // They have length 0 in the file chromosomeSizes.json
+        } else {
         var xt = chmInfo.loc2xpixil(i,0,config);
         drawLine(xt,yRuler,xt,config.rowMargin,p,'#000',1);
 
         var m = chmInfo.middle(i,config);
         p.text(m,yRuler-config.rowMargin,chmInfo.chmName(i));
+        }
     }
     drawLine(config.wideLeftText+config.GenomeWidth,yRuler,config.wideLeftText+config.GenomeWidth,config.rowMargin,p,'#000',1);
 }
@@ -141,14 +184,14 @@ function addCommas(x: any)
     return strX;
 }
 
-export function plotCnSegs(p: any,config: any,chmInfo: any,row: any, segs: Array<any>, chrCol: any, startCol: any,endCol: any,segCol: any,caseId: any) {
+export function plotCnSegs(p: any, config: any, chmInfo: any,row: any, segs: Array<any>, chrCol: any, startCol: any, endCol: any, segCol: any, caseId: any, genePanelIconData: IIconData) {
     var yRow = config.yRow(row);
     var genomeMeasured = 0;
     var genomeAltered = 0;
 
     _.each(segs, function(seg: any) {
         let chm: any = translateChm(seg[chrCol]);
-        if (chm == null || chm[0]>=chmInfo.hg19.length) return;
+        if (chm == null || chm[0]>=chmInfo.genomeRef.length) return;
         var start = seg[startCol];
         var end = seg[endCol];
         var segMean = seg[segCol];
@@ -193,18 +236,32 @@ export function plotCnSegs(p: any,config: any,chmInfo: any,row: any, segs: Array
     var t = p.text(config.xRightText(),yRow+config.rowHeight/2,label).attr({'text-anchor': 'start','font-weight': 'bold'});
     underlineText(t,p);
     addToolTip(t.node, tip,null,{my:'top right',at:'bottom left', viewport: $(window)});
+
+    var noGenePanelMessage = 'Gene panel information not found. Sample is presumed to be whole exome/genome sequenced.';
+
+    if (genePanelIconData && genePanelIconData.label) {
+        const icon = p.rect(config.xGenePanelIcon(), yRow+1, config.wideGenePanelIcon, config.heigthGenePanelIcon, 4);
+        icon.attr("fill", genePanelIconData.color || '#FFFFFF');
+        icon.attr("stroke-width", 0);
+        var t = p.text(config.xGenePanelIconText(), yRow+config.heigthGenePanelIcon/2+1, genePanelIconData.label)
+        .attr({'text-anchor': 'center', 'fill':'white'});
+        t.node.setAttribute("data-test", "cna-track-genepanel-icon-"+row);
+        var message = genePanelIconData.genePanelId? "Gene panel: " + genePanelIconData.genePanelId : noGenePanelMessage;
+        addToolTip(t.node,message,null,{my:'top right',at:'bottom left'});
+    }
+    
 }
 
-export function plotMuts(p: any, config: any,chmInfo: any,row: any, mutations: Array<Mutation>, caseId: any) {
+export function plotMuts(p: any, config: any,chmInfo: any,row: any, mutations: Array<Mutation>, caseId: any, genePanelIconData: IIconData) {
     var numMut = 0;
     var mutObjs = _.filter(mutations, function(_mutObj: Mutation){ return _mutObj.sampleId === caseId; } );
-
+    
     let pixelMap: Array<Array<string>> = [];
     for (var i = 0; i < mutObjs.length; i++) {
         var mutObj: Mutation = mutObjs[i];
-        if (typeof mutObj.gene.chromosome !== 'undefined') {
-            var chm = translateChm(mutObj.gene.chromosome);
-            if (chm != null && chm <= chmInfo.hg19.length) {
+        if (typeof mutObj.chr !== 'undefined') {
+            var chm = translateChm(mutObj.chr);
+            if (chm != null && chm <= chmInfo.genomeRef.length) {
                 var x = Math.round(chmInfo.loc2xpixil(chm, (mutObj.startPosition + mutObj.endPosition)/2, config));
                 var xBin = x - x%config.pixelsPerBinMut;
                 if (pixelMap[xBin] == null) pixelMap[xBin] = [];
@@ -214,7 +271,7 @@ export function plotMuts(p: any, config: any,chmInfo: any,row: any, mutations: A
         }
     }
     var maxCount = 5; // set max height to 5 mutations
-
+    
     var yRow = config.yRow(row)+config.rowHeight;
     $.each(pixelMap, function(i: number, arr: Array<any>) {
         var pixil = i;
@@ -229,7 +286,7 @@ export function plotMuts(p: any, config: any,chmInfo: any,row: any, mutations: A
             addToolTip(r.node, arr.join("</br>"), 100, '');
         }
     });
-
+    
     if (caseId!==null) {
         //var label = caseMetaData.label[caseId]; //TODO: needed for patient view
         var label = "MUT";
@@ -243,9 +300,20 @@ export function plotMuts(p: any, config: any,chmInfo: any,row: any, mutations: A
     }
     var t = p.text(config.xRightText(),yRow-config.rowHeight/2,mutations.length).attr({'text-anchor': 'start','font-weight': 'bold'});
     underlineText(t,p);
-    var tip =  "Number of mutation events.";
+    var tip = "Number of mutation events.";
     addToolTip(t.node,tip,null,{my:'top right',at:'bottom left'});
-
+    
+    if (genePanelIconData && genePanelIconData.label) {
+        const icon = p.rect(config.xGenePanelIcon(), yRow-config.heigthGenePanelIcon-1, config.wideGenePanelIcon, config.heigthGenePanelIcon, 4);
+        icon.attr("fill", genePanelIconData.color || '#FFFFFF');
+        icon.attr("stroke-width", 0);
+        var t = p.text(config.xGenePanelIconText(), yRow-config.heigthGenePanelIcon/2-1, genePanelIconData.label)
+        .attr({'text-anchor': 'center', 'fill':'white'});
+        t.node.setAttribute("data-test", "mut-track-genepanel-icon-"+row);
+        var message = "Gene panel: " + (genePanelIconData.genePanelId || 'N/A');
+        addToolTip(t.node,message,null,{my:'top right',at:'bottom left'});
+    }
+    
 }
 
 function addToolTip(node: any, tip: any,showDelay: any, position: any) {
@@ -256,10 +324,10 @@ function addToolTip(node: any, tip: any,showDelay: any, position: any) {
         style: { classes: 'qtip-light qtip-rounded' },
         position: {
             my: "bottom right",
-            at: "top left"
+            at: "top left",
+            viewport: $("body")
         }
-        //position: {viewport: $(window)}
-    }; //TODO: viewport causes jquery exception
+    };
     // if (showDelay)
     //     param['show'] = { delay: showDelay };
     // if (position)

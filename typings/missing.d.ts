@@ -3,6 +3,7 @@ declare module '*.scss';
 declare module '*.json';
 
 // these packages are missing typings
+declare module 'fmin';
 declare module "deep-equal-in-any-order";
 declare module 'object-sizeof';
 declare module 'save-svg-as-png'
@@ -47,3 +48,4 @@ declare module 'jspdf-yworks';
 declare module '3dmol';
 declare module 'reactour';
 declare module 'react-reveal';
+declare module 'react-column-resizer';

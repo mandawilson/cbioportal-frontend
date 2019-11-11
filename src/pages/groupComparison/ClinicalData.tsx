@@ -19,7 +19,8 @@ import {
     IStringAxisData,
     makeBoxScatterPlotData,
     MutationSummary,
-    mutationSummaryToAppearance
+    mutationSummaryToAppearance,
+    IAxisLogScaleParams
 } from "pages/resultsView/plots/PlotsTabUtils";
 import DownloadControls from "public-lib/components/downloadControls/DownloadControls";
 import ScrollBar from "shared/components/Scrollbar/ScrollBar";
@@ -160,13 +161,24 @@ export default class ClinicalData extends React.Component<IClinicalDataProps, {}
         return this.highlightedRow!.clinicalAttribute.datatype.toLowerCase() === 'number';
     }
 
-    @observable logScale = false;
+    @observable private logScale = false;
+    @observable logScaleFunction:IAxisLogScaleParams|undefined;
     @observable swapAxes = false;
     @observable horizontalBars = false;
 
     @autobind
     @action private onClickLogScale() {
         this.logScale = !this.logScale;
+        if (this.logScale) {
+            const MIN_LOG_ARGUMENT = 0.01;
+            this.logScaleFunction = {
+                label: "log2",
+                fLogScale: (x:number, offset:number) => Math.log2(Math.max(x, MIN_LOG_ARGUMENT)),
+                fInvLogScale: (x:number) => Math.pow(2, x)
+            };
+        } else {
+            this.logScaleFunction = undefined;
+        }
     }
 
     @autobind
@@ -327,7 +339,7 @@ export default class ClinicalData extends React.Component<IClinicalDataProps, {}
         }
     });
 
-    @computed get boxPlotTooltip() {
+    @computed get scatterPlotTooltip() {
         return (d: IBoxScatterPlotPoint) => {
             let content;
             if (this.boxPlotData.isComplete) {
@@ -336,6 +348,40 @@ export default class ClinicalData extends React.Component<IClinicalDataProps, {}
                 content = <span>Loading... (this shouldnt appear because the box plot shouldnt be visible)</span>;
             }
             return content;
+        }
+    }
+
+    @computed get boxPlotTooltip() {
+        return (d: any) => {
+            return <table className="table table-striped">
+                <thead>
+                    <tr>
+                        <th colSpan={2}>{this.boxPlotData.result!.data[d.eventKey].label}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Maximum</td>
+                        <td>{d.max}</td>
+                    </tr>
+                    <tr>
+                        <td>75% (q3)</td>
+                        <td>{d.q3}</td>
+                    </tr>
+                    <tr>
+                        <td>Median</td>
+                        <td>{d.median}</td>
+                    </tr>
+                    <tr>
+                        <td>25% (q1)</td>
+                        <td>{d.q1}</td>
+                    </tr>
+                    <tr>
+                        <td>Minimum</td>
+                        <td>{d.min}</td>
+                    </tr>
+                </tbody>
+            </table>
         }
     }
 
@@ -443,9 +489,10 @@ export default class ClinicalData extends React.Component<IClinicalDataProps, {}
                                 axisLabelY={this.vertLabel}
                                 data={this.boxPlotData.result.data}
                                 chartBase={500}
-                                tooltip={this.boxPlotTooltip}
+                                scatterPlotTooltip={this.scatterPlotTooltip}
+                                boxPlotTooltip={this.boxPlotTooltip}
                                 horizontal={this.boxPlotData.result.horizontal}
-                                logScale={this.logScale}
+                                logScale={this.logScaleFunction}
                                 size={scatterPlotSize}
                                 fill={mutationSummaryToAppearance[MutationSummary.Neither].fill}
                                 stroke={mutationSummaryToAppearance[MutationSummary.Neither].stroke}

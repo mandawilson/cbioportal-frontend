@@ -1,3 +1,10 @@
+enum MatchType {
+    MUTATION = 'MUTATION',
+    CNA = 'CNA',
+    MSI = 'MSI',
+    WILDTYPE = 'WILDTYPE'
+}
+
 export interface ITrial {
     id: string;
     nctId: string | '';
@@ -5,9 +12,17 @@ export interface ITrial {
     phase: string;
     shortTitle: string;
     status: string;
+    principalInvestigator?: IPrincipalInvestigator;
     treatmentList: {
         step: IStep[];
     };
+}
+
+interface IPrincipalInvestigator {
+    full_name: string;
+    credentials?: string;
+    email?: string;
+    url?: string;
 }
 
 export interface IStep {
@@ -20,7 +35,7 @@ export interface IArm {
     arm_type?: string | ''; // Arm type(Control Arm)
     arm_eligibility?: string;
     arm_info?: string; // Real arm description.
-    drugs?: IDrug[];
+    drugs?: IDrug[][];
     match: object[];
 }
 
@@ -34,23 +49,19 @@ export interface ITrialMatch {
     id: string;
     nctId: string | '';
     protocolNo: string | '';
-    oncotreePrimaryDiagnosisName: string;
-    gender?: string | null;
+    oncotreePrimaryDiagnosisName?: string;
+    gender?: string;
     matchType: string;
-    armDescription: string | null;
-    armType?: string | null;
-    trueHugoSymbol?: string | null;
-    trialAccrualStatus: string;
-    matchLevel: string;
+    armDescription?: string;
+    armType?: string;
     sampleId: string;
     mrn: string;
-    trueProteinChange?: string | null;
+    trueHugoSymbol?: string;
+    trueProteinChange?: string;
     vitalStatus?: string | null;
     genomicAlteration?: string;
-    patientClinical?: string | null;
-    patientGenomic?: string | null;
-    trialAgeNumerical: string;
-    trialOncotreePrimaryDiagnosis: string;
+    trialAgeNumerical?: string;
+    trialOncotreePrimaryDiagnosis?: string;
 }
 
 export interface ITrialQuery {
@@ -59,22 +70,31 @@ export interface ITrialQuery {
 }
 
 export interface IGenomicMatch {
-    trueHugoSymbol: string | null;
-    trueProteinChange: string | null;
-    sampleIds: string[];
+    trueHugoSymbol?: string;
+    trueProteinChange?: string;
 }
 
 export interface IClinicalGroupMatch {
-    trialAgeNumerical: string;
+    trialAgeNumerical: string[];
     trialOncotreePrimaryDiagnosis: {
         positive: string[], // trialOncotreePrimaryDiagnosis not includes '!'
         negative: string[] // trialOncotreePrimaryDiagnosis includes '!'
     };
-    matches: IGenomicGroupMatch[];
-    notMatches: IGenomicGroupMatch[];
+    matches: IGenomicMatchType;
+    notMatches: IGenomicMatchType;
 }
+
+export interface IGenomicMatchType {
+    MUTATION: IGenomicGroupMatch[],
+    CNA: IGenomicGroupMatch[],
+    MSI: IGenomicGroupMatch[],
+    WILDTYPE: IGenomicGroupMatch[],
+    [key: string]: IGenomicGroupMatch[]
+}
+
 export interface IGenomicGroupMatch {
     genomicAlteration: string;
+    matchType: string;
     matches: IGenomicMatch[];
 }
 
@@ -82,6 +102,7 @@ export interface IArmMatch {
     armDescription: string | '';
     drugs: string[][];
     matches: IClinicalGroupMatch[];
+    sampleIds: string[];
 }
 
 export interface IDetailedTrialMatch {
@@ -91,6 +112,7 @@ export interface IDetailedTrialMatch {
     phase: string;
     shortTitle: string;
     status: string;
+    principalInvestigator?: IPrincipalInvestigator;
     matches: IArmMatch[];
     priority: number;
 }

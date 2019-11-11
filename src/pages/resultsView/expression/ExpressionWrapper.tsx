@@ -17,8 +17,11 @@ import classNames from 'classnames';
 import {MSKTab, MSKTabs} from "../../../shared/components/MSKTabs/MSKTabs";
 import {CoverageInformation, isPanCanStudy, isTCGAProvStudy} from "../ResultsViewPageStoreUtils";
 import {
-    CNA_STROKE_WIDTH, IBoxScatterPlotPoint, INumberAxisData, IScatterPlotSampleData, IStringAxisData,
-    makeBoxScatterPlotData, makeScatterPlotPointAppearance, MutationSummary, mutationSummaryToAppearance, scatterPlotLegendData, scatterPlotZIndexSortBy
+    CNA_STROKE_WIDTH,
+    IBoxScatterPlotPoint, INumberAxisData, IPlotSampleData, IStringAxisData,
+    makeBoxScatterPlotData, makeScatterPlotPointAppearance,
+    MutationSummary, mutationSummaryToAppearance, scatterPlotLegendData,
+    scatterPlotZIndexSortBy, IAxisLogScaleParams
 } from "../plots/PlotsTabUtils";
 import {AnnotatedMutation, ResultsViewPageStore} from "../ResultsViewPageStore";
 import OqlStatusBanner from "../../../shared/components/banners/OqlStatusBanner";
@@ -28,7 +31,7 @@ import {MobxPromise} from "mobxpromise";
 import {stringListToSet} from "../../../public-lib/lib/StringUtils";
 import LoadingIndicator from "shared/components/loadingIndicator/LoadingIndicator";
 import BoxScatterPlot from "../../../shared/components/plots/BoxScatterPlot";
-import {ViewType} from "../plots/PlotsTab";
+import {ViewType, PlotType} from "../plots/PlotsTab";
 import AlterationFilterWarning from "../../../shared/components/banners/AlterationFilterWarning";
 
 export interface ExpressionWrapperProps {
@@ -333,10 +336,12 @@ export default class ExpressionWrapper extends React.Component<ExpressionWrapper
     }
 
     @computed
-    get alphabetizedStudies(){
-        return _.chain(this.props.studyMap).values().sortBy(
-            (study:CancerStudy)=>study.name
-        ).value();
+    get alphabetizedAndFilteredStudies() {
+        return _.chain(this.props.studyMap)
+            .values()
+            .filter((study: CancerStudy) => study.studyId in (this.studiesWithExpressionData.result || {}))
+            .sortBy((study: CancerStudy) => study.name)
+            .value();
     }
 
     @computed
@@ -356,18 +361,15 @@ export default class ExpressionWrapper extends React.Component<ExpressionWrapper
                         <a data-test="ExpressionStudyUnselectAll" className={classNames({hidden:this.selectedStudies.length === 0})} onClick={this.handleDeselectAllStudies}>Deselect all</a>
                     </div>
                     {
-                        _.map(this.alphabetizedStudies, (study: CancerStudy) => {
-                            const hasData = (study.studyId in (this.studiesWithExpressionData.result || {}));
+                        _.map(this.alphabetizedAndFilteredStudies, (study: CancerStudy) => {
                             return (
-                                <div className={classNames('checkbox',{ disabled:!hasData })}>
+                                <div className='checkbox'>
                                     <label>
                                         <input type="checkbox"
-                                               checked={hasData && this.selectedStudyIds[study.studyId] === true}
-                                               value={study.studyId}
-                                               disabled={!hasData}
-                                               onChange={(!hasData)? ()=>{} : this.handleStudySelection}/>
+                                            checked={this.selectedStudyIds[study.studyId] === true}
+                                            value={study.studyId}
+                                            onChange={this.handleStudySelection} />
                                         {study.name}
-                                        { (!hasData) && (<span className="badge badge-info small" style={{marginLeft:5}}>{"No Expr. Data"}</span>) }
                                     </label>
                                 </div>
                             )
@@ -403,7 +405,7 @@ export default class ExpressionWrapper extends React.Component<ExpressionWrapper
 
     @computed get fill() {
         if (this.showCna || this.showMutations) {
-            return (d:IScatterPlotSampleData)=>this.scatterPlotAppearance(d).fill!;
+            return (d:IPlotSampleData)=>this.scatterPlotAppearance(d).fill!;
         } else {
             return mutationSummaryToAppearance[MutationSummary.Neither].fill;
         }
@@ -427,12 +429,12 @@ export default class ExpressionWrapper extends React.Component<ExpressionWrapper
     }
 
     @autobind
-    private strokeOpacity(d:IScatterPlotSampleData) {
+    private strokeOpacity(d:IPlotSampleData) {
         return this.scatterPlotAppearance(d).strokeOpacity;
     }
 
     @autobind
-    private stroke(d:IScatterPlotSampleData) {
+    private stroke(d:IPlotSampleData) {
         return this.scatterPlotAppearance(d).stroke;
     }
 
@@ -469,9 +471,23 @@ export default class ExpressionWrapper extends React.Component<ExpressionWrapper
     }
 
     @computed get zIndexSortBy() {
-        return scatterPlotZIndexSortBy<IScatterPlotSampleData>(
+        return scatterPlotZIndexSortBy<IPlotSampleData>(
             this.viewType
         );
+    }
+
+    @computed get axisLogScaleFunction():IAxisLogScaleParams|undefined {
+
+        const MIN_LOG_ARGUMENT = 0.01;
+
+        if (!this.logScale) {
+            return undefined;
+        }
+        return {
+            label: "log2",
+            fLogScale: (x:number, offset:number) => Math.log2(Math.max(x, MIN_LOG_ARGUMENT)),
+            fInvLogScale: (x:number) => Math.pow(2, x)
+        };
     }
 
     @autobind
@@ -490,9 +506,9 @@ export default class ExpressionWrapper extends React.Component<ExpressionWrapper
                         axisLabelY={this.yAxisLabel}
                         data={this.boxPlotData.result}
                         chartBase={550}
-                        tooltip={this.tooltip}
+                        scatterPlotTooltip={this.tooltip}
                         horizontal={false}
-                        logScale={this.logScale}
+                        logScale={this.axisLogScaleFunction}
                         size={4}
                         fill={this.fill}
                         stroke={this.stroke}
@@ -503,7 +519,7 @@ export default class ExpressionWrapper extends React.Component<ExpressionWrapper
                         strokeWidth={this.strokeWidth}
                         useLogSpaceTicks={true}
                         legendData={scatterPlotLegendData(
-                            _.flatten(this.boxPlotData.result.map(d=>d.data)), this.viewType, this.mutationDataExists, this.cnaDataExists, this.props.store.driverAnnotationSettings.driversAnnotated
+                            _.flatten(this.boxPlotData.result.map(d=>d.data)), this.viewType, PlotType.BoxPlot, this.mutationDataExists, this.cnaDataExists, this.props.store.driverAnnotationSettings.driversAnnotated, []
                         )}
                         legendLocationWidthThreshold={900}
                         boxCalculationFilter={this.boxCalculationFilter}
@@ -617,12 +633,13 @@ export default class ExpressionWrapper extends React.Component<ExpressionWrapper
                                 onClick={() => this.studySelectorModalVisible = !this.studySelectorModalVisible}>Custom list</button>
 
                     </div>}
-                    { this.studiesWithExpressionData.isPending && <LoadingIndicator isLoading={true} />}
 
                     <div className="collapse">
                         <div className="well"></div>
                     </div>
                 </div>
+
+                <LoadingIndicator center={true} size="big" isLoading={this.boxPlotData.isPending || this.studiesWithExpressionData.isPending} />
 
                 { this.boxPlotData.isComplete && <If condition={this.selectedStudies.length > 0}>
                     <Then>
@@ -650,7 +667,6 @@ export default class ExpressionWrapper extends React.Component<ExpressionWrapper
                         </div>
                     </Else>
                 </If>}
-                { this.boxPlotData.isPending && <LoadingIndicator isLoading={true} />}
             </div>
         );
     }

@@ -12,9 +12,11 @@ import Helmet from "react-helmet";
 import {computed} from "mobx";
 import { If, Else, Then } from 'react-if';
 import UserMessager from "shared/components/userMessager/UserMessage";
-import {formatError} from "shared/lib/errorFormatter";
+import {formatErrorLog, formatErrorTitle, formatErrorMessages} from "shared/lib/errorFormatter";
 import {buildCBioPortalPageUrl} from "shared/api/urls";
 import ErrorScreen from "shared/components/errorScreen/ErrorScreen";
+import { ServerConfigHelpers } from 'config/config';
+import {isWebdriver} from "public-lib/lib/webdriverUtils";
 
 interface IContainerProps {
     location: Location;
@@ -46,6 +48,17 @@ export default class Container extends React.Component<IContainerProps, {}> {
     }
 
     render() {
+        if (!isWebdriver() && !ServerConfigHelpers.sessionServiceIsEnabled()) {
+            return (
+                <div className="contentWrapper">
+                    <ErrorScreen
+                        title={"No session service configured"}
+                        body={<p>As of version 3.0.0, all cBioPortal installations require a session service.  Please review these instructions for how to do so. <a href="https://docs.cbioportal.org/2.1.2-deploy-without-docker/deploying#run-cbioportal-session-service">https://docs.cbioportal.org/2.1.2-deploy-without-docker/deploying#run-cbioportal-session-service</a>
+                        </p>}
+                    />
+                </div>
+            )
+        }
 
         return (
             <If condition={this.isSessionLoaded}>
@@ -63,15 +76,16 @@ export default class Container extends React.Component<IContainerProps, {}> {
                         </div>
                     </div>
                     <If condition={this.appStore.isErrorCondition}>
-                       <Then>
-                           <div className="contentWrapper">
-                               <ErrorScreen
-                                    title={"Oops. There was an error retrieving data."}
+                        <Then>
+                            <div className="contentWrapper">
+                                <ErrorScreen
+                                    title={formatErrorTitle(this.appStore.undismissedSiteErrors) || "Oops. There was an error retrieving data."}
                                     body={<a href={buildCBioPortalPageUrl("/")}>Return to homepage</a>}
-                                    errorLog={formatError(this.appStore.undismissedSiteErrors)}
-                               />
-                           </div>
-                       </Then>
+                                    errorLog={formatErrorLog(this.appStore.undismissedSiteErrors)}
+                                    errorMessages={formatErrorMessages(this.appStore.undismissedSiteErrors)}
+                                />
+                            </div>
+                        </Then>
                         <Else>
                             <div className="contentWrapper">
                                 {(this.isSessionLoaded) && this.props.children}

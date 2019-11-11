@@ -1,11 +1,10 @@
 import * as React from "react";
 import ReactSelect from "react-select";
 import autobind from "autobind-decorator";
-import {computed} from "mobx";
+import {computed, observable, action} from "mobx";
 import {observer} from "mobx-react";
 
 import {CheckBoxType, getOptionLabel, getSelectedValuesMap, Option} from "./CheckedSelectUtils";
-import './checkedSelect.scss';
 
 type CheckedSelectProps = {
     name?: string;
@@ -23,6 +22,9 @@ type CheckedSelectProps = {
     addAllLabel?: string | JSX.Element;
     clearAllLabel?: string | JSX.Element;
     showControls?: boolean;
+    height?:number;
+    onInputChange?: (input:string) => void;
+    inputValue?:string;
 };
 
 @observer
@@ -35,7 +37,9 @@ export default class CheckedSelect extends React.Component<CheckedSelectProps, {
         showControls: true,
         checkBoxType: CheckBoxType.STRING
     };
-
+    
+    @observable defaultInputValue = '';
+    
     @computed
     get selectedValues() {
         return getSelectedValuesMap(this.props.value);
@@ -86,6 +90,21 @@ export default class CheckedSelect extends React.Component<CheckedSelectProps, {
     {
         return getOptionLabel(option, this.selectedValues, this.props.checkBoxType);
     }
+    
+    @computed get inputValue() {
+        return this.props.inputValue || this.defaultInputValue;
+    }
+    
+    @autobind
+    @action defaultOnInputChange(input:string, options:{action:string}) {
+        // The input value (which is a blank string in the case of action === 'set-value')
+        // will be passed to `this.props.onInputChange` by default without the `if` condition.
+        // This leads to undesirable behaviour so adding the if condition will prevent that.
+        if (options.action !== "set-value") {
+            if (this.props.onInputChange) this.props.onInputChange(input);
+            this.defaultInputValue = input;
+        }
+    }
 
     @autobind
     private buttonsSection() {
@@ -124,8 +143,8 @@ export default class CheckedSelect extends React.Component<CheckedSelectProps, {
                     styles={{
                         control: (provided:any)=>({
                             ...provided,
-                            height:33.5,
-                            minHeight:33.5,
+                            height:this.props.height || 33.5,
+                            minHeight:this.props.height || 33.5,
                             border: "1px solid rgb(204,204,204)"
                         }),
                         menu: (provided:any)=>({
@@ -142,25 +161,22 @@ export default class CheckedSelect extends React.Component<CheckedSelectProps, {
                         }),
                         dropdownIndicator:(provided:any)=>({
                             ...provided,
+                            // make the dropdown y axis padding a bit small for shorter dropdown.
+                            padding: '4px 8px',
                             color:"#000000"
                         }),
                         option:(provided:any, state:any)=>{
-                            const ret:any = {
+                            return {
                                 ...provided,
-                                cursor:"pointer",
-                                color:"black"
+                                cursor:"pointer"
                             };
-                            if (state.isSelected && !state.isFocused) {
-                                ret.backgroundColor = state.theme.colors.primary25;
-                            }
-                            return ret;
                         }
                     }}
                     theme={(theme:any)=>({
                         ...theme,
                         colors: {
                             ...theme.colors,
-                            primary: theme.colors.primary50
+                            //primary: theme.colors.primary50
                         },
                     })}
                     components={this.components}
@@ -182,6 +198,9 @@ export default class CheckedSelect extends React.Component<CheckedSelectProps, {
                     getOptionLabel={this.getOptionLabel}
                     value={this.props.value}
                     labelKey="label"
+                    onInputChange={this.defaultOnInputChange}
+                    inputValue={this.inputValue}
+                    backspaceRemovesValue={false}
                 />
             </div>
         );
