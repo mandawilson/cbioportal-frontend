@@ -5,6 +5,7 @@ import { Mutation, ClinicalData } from 'cbioportal-ts-api-client';
 import { initMutation } from 'test/MutationMockUtils';
 import { initClinicalData } from 'test/ClinicalDataMockUtils';
 import { CLINICAL_ATTRIBUTE_ID_ENUM } from 'shared/constants';
+import { remoteData } from 'cbioportal-frontend-commons';
 import SampleManager from 'pages/patientView/SampleManager';
 import {
     ASCN_AMP,
@@ -251,11 +252,25 @@ describe('ASCNCopyNumberColumnFormatter', () => {
         clinicalAttributeId: CLINICAL_ATTRIBUTE_ID_ENUM.FACETS_WGD,
         value: 'NO_WGD',
     });
-    const s1NoWgdClinicalDataMap: {
-        [sampleId: string]: ClinicalData[];
-    } = {
-        [sample1Id]: [clinicalDataSampleIdForSample1, clinicalDataNoWgd],
-    };
+
+    // MobxPromise<{ [x: string]: ClinicalData[]; }>;
+    // MobxPromise<{ [sampleId: string]: ClinicalData[]}>
+    //
+    // readonly mutationMolecularProfile = remoteData({
+    //     await: () => [this.molecularProfilesInStudy],
+    //     invoke: async () =>
+    //         findMutationMolecularProfile(
+    //             this.molecularProfilesInStudy,
+    //             this.studyId
+    //         ),
+    // });
+
+    // const s1NoWgdClinicalDataMap: MobxPromise<{[sampleId: string]: ClinicalData[]; }> = remoteData({
+    //   invoke: () => return {[sample1Id]: [clinicalDataSampleIdForSample1, clinicalDataNoWgd]}
+    // });
+    //
+    //
+
     const s1WgdClinicalDataMap: {
         [sampleId: string]: ClinicalData[];
     } = {
