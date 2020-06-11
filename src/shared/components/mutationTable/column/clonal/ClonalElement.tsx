@@ -79,7 +79,7 @@ const ClonalCircle: React.FunctionComponent<{
     clonalValue: string;
 }> = props => {
     return (
-        <svg height="10" width="10">
+        <svg height="10" width="10" data-test={`${props.clonalValue}-icon`}>
             <circle
                 cx={5}
                 cy={5}

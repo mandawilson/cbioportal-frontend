@@ -74,7 +74,7 @@ export default class ClonalColumnFormatter {
         }
 
         return (
-            <>
+            <div data-test="clonal-cell">
                 {sampleIds.map((sampleId: string, index: number) => {
                     return (
                         <span
@@ -90,7 +90,7 @@ export default class ClonalColumnFormatter {
                         </span>
                     );
                 })}
-            </>
+            </div>
         );
     }
 

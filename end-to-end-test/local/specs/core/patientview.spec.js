@@ -9,14 +9,16 @@ var waitForPatientView = require('../../../shared/specUtils')
 var _ = require('lodash');
 
 const CBIOPORTAL_URL = process.env.CBIOPORTAL_URL.replace(/\/$/, '');
-const patienViewUrl =
+const genePanelPatientViewUrl =
     CBIOPORTAL_URL + '/patient?studyId=teststudy_genepanels&caseId=patientA';
+const ascnPatientViewUrl =
+    CBIOPORTAL_URL + '/patient?studyId=ascn_test_study&caseId=p_C_1T16WJ';
 
 describe('patient view page', function() {
     if (useExternalFrontend) {
         describe('gene panel information', () => {
             before(() => {
-                goToUrlAndSetLocalStorage(patienViewUrl);
+                goToUrlAndSetLocalStorage(genePanelPatientViewUrl);
                 waitForPatientView();
             });
 
@@ -80,7 +82,7 @@ describe('patient view page', function() {
             let filterIcon;
 
             before(() => {
-                goToUrlAndSetLocalStorage(patienViewUrl);
+                goToUrlAndSetLocalStorage(genePanelPatientViewUrl);
                 waitForPatientView();
             });
 
@@ -141,7 +143,7 @@ describe('patient view page', function() {
             let filterIcon;
 
             before(() => {
-                goToUrlAndSetLocalStorage(patienViewUrl);
+                goToUrlAndSetLocalStorage(genePanelPatientViewUrl);
                 waitForPatientView();
             });
 
@@ -195,7 +197,7 @@ describe('patient view page', function() {
 
         describe('genomic tracks', () => {
             before(() => {
-                goToUrlAndSetLocalStorage(patienViewUrl);
+                goToUrlAndSetLocalStorage(genePanelPatientViewUrl);
                 waitForPatientView();
             });
 
@@ -253,7 +255,7 @@ describe('patient view page', function() {
 
         describe('VAF plot', () => {
             before(() => {
-                goToUrlAndSetLocalStorage(patienViewUrl);
+                goToUrlAndSetLocalStorage(genePanelPatientViewUrl);
                 waitForPatientView();
             });
 
@@ -274,7 +276,7 @@ describe('patient view page', function() {
             }
 
             beforeEach(() => {
-                goToUrlAndSetLocalStorage(patienViewUrl);
+                goToUrlAndSetLocalStorage(genePanelPatientViewUrl);
                 waitForPatientView();
             });
 
@@ -358,6 +360,37 @@ describe('patient view page', function() {
                 assert($('#patient-view-gene-panel').isExisting());
             });
         });
+
+        describe('ascn columns', () => {
+            before(() => {
+                goToUrlAndSetLocalStorage(ascnPatientViewUrl);
+                waitForPatientView();
+            });
+
+            const c = 'clonal-icon';
+            const s = 'subclonal-icon';
+            const n = 'na-icon';
+
+            it.only('mutation table shows correct clocal icons, subcloanl icons, NA/indeterminate icons, and invisible icons', () => {
+                const clonalIcon = {
+                    PIK3R1: [c, s, n, c, c],
+                };
+
+                const sampleVisibility = {
+                    PIK3R1: [true, true, false, true, true],
+                };
+
+                const genes = _.keys(clonalIcon);
+                genes.forEach(gene => {
+                    testClonalIcon(
+                        gene,
+                        'patientview-mutation-table',
+                        clonalIcon[gene],
+                        sampleVisibility[gene]
+                    );
+                });
+            });
+        });
     }
 });
 
@@ -401,6 +434,56 @@ function testSampleIcon(
             'Gene ' +
                 geneSymbol +
                 ': icon visibility at position ' +
+                i +
+                ' is not `' +
+                desiredVisibility +
+                '`, but is `' +
+                actualVisibility +
+                '`'
+        );
+    });
+}
+
+function testClonalIcon(
+    geneSymbol,
+    tableTag,
+    clonalIconTypes,
+    sampleVisibilities
+) {
+    const geneCell = $('div[data-test=' + tableTag + '] table').$(
+        'span=' + geneSymbol
+    );
+    const samplesCell = geneCell
+        .$('..')
+        .$('..')
+        .$('div[data-test=clonal-cell]');
+    const icons = samplesCell.$$('span');
+    browser.debug();
+
+    clonalIconTypes.forEach((desiredDataType, i) => {
+        const svg = icons[i].$('svg[data-test=' + desiredDataType + ']');
+
+        const isExpectedIcon = svg.isExisting();
+        assert.equal(
+            isExpectedIcon,
+            true,
+            'Gene ' +
+                geneSymbol +
+                ': clonal icon type at position ' +
+                i +
+                ' is not `' +
+                desiredDataType +
+                '`'
+        );
+
+        const actualVisibility = svg.isDisplayedInViewport();
+
+        assert.equal(
+            actualVisibility,
+            desiredVisibility,
+            'Gene ' +
+                geneSymbol +
+                ': clonal icon visibility at position ' +
                 i +
                 ' is not `' +
                 desiredVisibility +
