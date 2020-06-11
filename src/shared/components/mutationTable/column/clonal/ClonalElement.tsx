@@ -78,7 +78,6 @@ export const ClonalElementTooltip: React.FunctionComponent<{
 const ClonalCircle: React.FunctionComponent<{
     clonalValue: string;
 }> = props => {
-    console.log('HERE I AM CLONAL VALUE IS' + props.clonalValue);
     return (
         <svg
             height="10"
@@ -86,7 +85,7 @@ const ClonalCircle: React.FunctionComponent<{
             data-test={`${
                 props.clonalValue !== undefined
                     ? props.clonalValue.toLowerCase()
-                    : 'FAKE'
+                    : 'na'
             }-icon`}
         >
             <circle

@@ -14,7 +14,7 @@ const ascnPatientViewUrl =
 describe('patient view page', function() {
     describe('ascn column icons', () => {
         beforeEach(() => {
-            gotToUrlAndSetLocalStorage(ascnPatientViewUrl);
+            goToUrlAndSetLocalStorage(ascnPatientViewUrl);
             waitForPatientView();
         });
 
