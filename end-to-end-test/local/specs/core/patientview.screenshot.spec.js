@@ -6,16 +6,37 @@ var assertScreenShotMatch = require('../../../shared/lib/testUtils')
     .assertScreenShotMatch;
 
 const CBIOPORTAL_URL = process.env.CBIOPORTAL_URL.replace(/\/$/, '');
-const patienViewUrl =
+const patientViewUrl =
     CBIOPORTAL_URL + '/patient?studyId=teststudy_genepanels&caseId=patientA';
+const ascnPatientViewUrl =
+    CBIOPORTAL_URL + '/patient?studyId=ascn_test_study&caseId=p_C_1T16WJ';
 
 describe('patient view page', function() {
+    describe('ascn column icons', () => {
+        beforeEach(() => {
+            gotToUrlAndSetLocalStorage(ascnPatientViewUrl);
+            waitForPatientView();
+        });
+
+        it.only('shows ccf bar chart', () => {
+            const geneCell = $(
+                'div[data-test=patientview-mutation-table] table'
+            ).$('span=PIK3R1');
+            const ccfCell = geneCell
+                .$('..')
+                .$('..')
+                .$('span[data-test=ccf-cell]');
+            var res = browser.checkElement(ccfCell);
+            assertScreenShotMatch(ccfCell);
+        });
+    });
+
     describe('gene panel icons', () => {
         const iconIndexGenePanelSample = 2;
         const iconIndexWholeGenomeSample = 3;
 
         beforeEach(() => {
-            goToUrlAndSetLocalStorage(patienViewUrl);
+            goToUrlAndSetLocalStorage(patientViewUrl);
             waitForPatientView();
         });
 

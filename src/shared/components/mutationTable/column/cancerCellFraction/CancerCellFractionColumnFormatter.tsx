@@ -54,7 +54,7 @@ export default class CancerCellFractionColumnFormatter {
                 : 'NA';
         }
         return (
-            <span>
+            <span data-test="ccf-cell">
                 <CancerCellFractionElement
                     sampleIds={sampleIds}
                     sampleToCCFValue={sampleToCCFValue}
