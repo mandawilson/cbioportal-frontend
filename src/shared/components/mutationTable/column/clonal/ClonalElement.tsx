@@ -45,7 +45,7 @@ export const ClonalElementTooltip: React.FunctionComponent<{
         display: 'inline-block',
     };
     return (
-        <div>
+        <div data-test="clonal-tooltip">
             {props.sampleManager ? (
                 <div>
                     {props.sampleManager.getComponentForSample(

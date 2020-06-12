@@ -373,11 +373,11 @@ describe('patient view page', function() {
 
             it.only('mutation table shows correct clocal icons, subcloanl icons, NA/indeterminate icons, and invisible icons', () => {
                 const clonalIcon = {
-                    PIK3R1: [c, s, n, c, c],
+                    PIK3R1: [c, s, n, c, c, n],
                 };
 
                 const sampleVisibility = {
-                    PIK3R1: [true, true, false, true, true],
+                    PIK3R1: [true, true, false, true, true, false],
                 };
 
                 const genes = _.keys(clonalIcon);
@@ -389,6 +389,38 @@ describe('patient view page', function() {
                         sampleVisibility[gene]
                     );
                 });
+            });
+
+            it('clonal column tooltip displays on mouseover element', () => {
+                browser.moveToObject(
+                    'span[data-test=clonal-cell] span span svg circle'
+                ); // moves pointer to plot thumbnail
+                $(
+                    'div[role=tooltip] span[data-test=clonal-tooltip]'
+                ).waitForExist();
+            });
+
+            it('ccf column tooltip displays on mouseover element', () => {
+                browser.moveToObject('span[data-test=ccf-cell] span'); // moves pointer to plot thumbnail
+                $(
+                    'div[role=tooltip] span[data-test=ccf-tooltip]'
+                ).waitForExist();
+            });
+
+            it('expected alt copies column tooltip displays on mouseover element', () => {
+                browser.moveToObject('span[data-test=eac-cell] span span'); // moves pointer to plot thumbnail
+                $(
+                    'div[role=tooltip] span[data-test=eac-tooltip]'
+                ).waitForExist();
+            });
+
+            it('integer copy number column tooltip displays on mouseover element', () => {
+                browser.moveToObject(
+                    'span[data-test=ascn-copy-number-cell] span span svg g rect'
+                ); // moves pointer to plot thumbnail
+                $(
+                    'div[role=tooltip] span[data-test=ascn-copy-number-tooltip]'
+                ).waitForExist();
             });
         });
     }
@@ -453,13 +485,12 @@ function testClonalIcon(
     const geneCell = $('div[data-test=' + tableTag + '] table').$(
         'span=' + geneSymbol
     );
-    const samplesCell = geneCell
+    const clonalCell = geneCell
         .$('..')
         .$('..')
-        .$('div[data-test=clonal-cell]');
-    const icons = samplesCell.$$('span');
-    browser.debug();
+        .$('span[data-test=clonal-cell]');
 
+    const icons = clonalCell.$$('span span');
     clonalIconTypes.forEach((desiredDataType, i) => {
         const svg = icons[i].$('svg[data-test=' + desiredDataType + ']');
 
@@ -476,17 +507,16 @@ function testClonalIcon(
                 '`'
         );
 
-        const actualVisibility = svg.isDisplayedInViewport();
-
+        const actualVisibility = svg.$('circle').getAttribute('opacity') > 0;
         assert.equal(
             actualVisibility,
-            desiredVisibility,
+            sampleVisibilities[i],
             'Gene ' +
                 geneSymbol +
                 ': clonal icon visibility at position ' +
                 i +
                 ' is not `' +
-                desiredVisibility +
+                sampleVisibilities[i] +
                 '`, but is `' +
                 actualVisibility +
                 '`'

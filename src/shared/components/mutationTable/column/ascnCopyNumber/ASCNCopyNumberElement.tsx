@@ -127,7 +127,7 @@ export const ASCNCopyNumberElementTooltip: React.FunctionComponent<{
         props.minorCopyNumberValue
     );
     return (
-        <span>
+        <span data-test="ascn-copy-number-tooltip">
             {props.sampleManager ? (
                 <span>
                     {props.sampleManager.getComponentForSample(

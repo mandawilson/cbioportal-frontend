@@ -12,22 +12,31 @@ const ascnPatientViewUrl =
     CBIOPORTAL_URL + '/patient?studyId=ascn_test_study&caseId=p_C_1T16WJ';
 
 describe('patient view page', function() {
-    describe('ascn column icons', () => {
+    describe('mutation table for study with ascn data', () => {
         beforeEach(() => {
             goToUrlAndSetLocalStorage(ascnPatientViewUrl);
             waitForPatientView();
         });
 
-        it.only('shows ccf bar chart', () => {
-            const geneCell = $(
+        it('ascn columns are displayed', () => {
+            var res = browser.checkElement(
                 'div[data-test=patientview-mutation-table] table'
-            ).$('span=PIK3R1');
-            const ccfCell = geneCell
-                .$('..')
-                .$('..')
-                .$('span[data-test=ccf-cell]');
-            var res = browser.checkElement(ccfCell);
-            assertScreenShotMatch(ccfCell);
+            );
+            assertScreenShotMatch(res);
+        });
+    });
+
+    describe('mutation table for study with no ascn data', () => {
+        beforeEach(() => {
+            goToUrlAndSetLocalStorage(patientViewUrl);
+            waitForPatientView();
+        });
+
+        it('ascn columns are unavailable', () => {
+            var res = browser.checkElement(
+                'div[data-test=patientview-mutation-table] table'
+            );
+            assertScreenShotMatch(res);
         });
     });
 
