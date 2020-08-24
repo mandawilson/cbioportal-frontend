@@ -2,7 +2,7 @@ enum MatchType {
     MUTATION = 'MUTATION',
     CNA = 'CNA',
     MSI = 'MSI',
-    WILDTYPE = 'WILDTYPE'
+    WILDTYPE = 'WILDTYPE',
 }
 
 export interface ITrial {
@@ -70,32 +70,36 @@ export interface ITrialQuery {
 }
 
 export interface IGenomicMatch {
-    trueHugoSymbol?: string;
-    trueProteinChange?: string;
+    trueHugoSymbol: string;
+    trueProteinChange: string;
+}
+
+export interface IPatientGenomic {
+    trueHugoSymbol: string;
+    trueProteinChange: string[];
 }
 
 export interface IClinicalGroupMatch {
     trialAgeNumerical: string[];
     trialOncotreePrimaryDiagnosis: {
-        positive: string[], // trialOncotreePrimaryDiagnosis not includes '!'
-        negative: string[] // trialOncotreePrimaryDiagnosis includes '!'
+        positive: string[]; // trialOncotreePrimaryDiagnosis not includes '!'
+        negative: string[]; // trialOncotreePrimaryDiagnosis includes '!'
     };
-    matches: IGenomicMatchType;
-    notMatches: IGenomicMatchType;
+    matches?: IGenomicMatchType;
+    notMatches?: IGenomicMatchType;
 }
 
 export interface IGenomicMatchType {
-    MUTATION: IGenomicGroupMatch[],
-    CNA: IGenomicGroupMatch[],
-    MSI: IGenomicGroupMatch[],
-    WILDTYPE: IGenomicGroupMatch[],
-    [key: string]: IGenomicGroupMatch[]
+    MUTATION: IGenomicGroupMatch[];
+    CNA: IGenomicGroupMatch[];
+    MSI: IGenomicGroupMatch[];
+    WILDTYPE: IGenomicGroupMatch[];
+    [key: string]: IGenomicGroupMatch[];
 }
 
 export interface IGenomicGroupMatch {
-    genomicAlteration: string;
-    matchType: string;
-    matches: IGenomicMatch[];
+    genomicAlteration: string[];
+    patientGenomic?: IPatientGenomic;
 }
 
 export interface IArmMatch {

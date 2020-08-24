@@ -5,16 +5,19 @@ import Container from 'appShell/App/Container';
 import {
     handleIndexDO,
     handleCaseDO,
-    handleLegacySubmission,
     restoreRouteAfterRedirect,
     handleStudyDO,
     handleLinkOut,
+    handleEncodedRedirect,
+    redirectTo,
 } from './shared/lib/redirectHelpers';
 import PageNotFound from './shared/components/pageNotFound/PageNotFound';
 
 /* HOW TO ADD A NEW ROUTE
  * 1. Import the "page" component using the bundle-loader directives as seen in imports below
  * 2. Add a Route element with getComponent set to the result the lazyLoadComponent function passed your new component
+ * If your route includes tabs, include `null, tabParamValidator(YourPageTabEnum) in the lazyLoadComponent call.
+ * This ensures that invalid sub routes 404 correctly
  */
 
 // import page components here
@@ -36,31 +39,84 @@ import RMATLAB from 'bundle-loader?lazy!babel-loader!./pages/staticPages/rmatlab
 import Tutorials from 'bundle-loader?lazy!babel-loader!./pages/staticPages/tutorials/Tutorials';
 import Visualize from 'bundle-loader?lazy!babel-loader!./pages/staticPages/visualize/Visualize';
 import AboutUs from 'bundle-loader?lazy!babel-loader!./pages/staticPages/aboutus/AboutUs';
+import Software from 'bundle-loader?lazy!babel-loader!./pages/staticPages/software/Software';
 import News from 'bundle-loader?lazy!babel-loader!./pages/staticPages/news/News';
 import FAQ from 'bundle-loader?lazy!babel-loader!./pages/staticPages/faq/FAQ';
 import OQL from 'bundle-loader?lazy!babel-loader!./pages/staticPages/oql/OQL';
 import GroupComparisonPage from 'bundle-loader?lazy!babel-loader!./pages/groupComparison/GroupComparisonPage';
+import ErrorPage from 'bundle-loader?lazy!babel-loader!./pages/resultsView/ErrorPage';
 
-import AppConfig from 'appConfig';
-
-import { getBasePath } from 'shared/api/urls';
 import $ from 'jquery';
-import ExtendedRouterStore from 'shared/lib/ExtendedRouterStore';
-import getBrowserWindow from 'public-lib/lib/getBrowserWindow';
+import { getBrowserWindow } from 'cbioportal-frontend-commons';
 import { seekUrlHash } from 'shared/lib/seekUrlHash';
-import queryString from 'query-string';
 import { PagePath } from 'shared/enums/PagePaths';
+import { ResultsViewTab } from 'pages/resultsView/ResultsViewPageHelpers';
+import {
+    StudyViewPageTabKeyEnum,
+    StudyViewResourceTabPrefix,
+} from 'pages/studyView/StudyViewPageTabs';
+import {
+    PatientViewPageTabs,
+    PatientViewResourceTabPrefix,
+} from 'pages/patientView/PatientViewPageTabs';
+import { GroupComparisonTab } from 'pages/groupComparison/GroupComparisonTabs';
+import { handleEncodedURLRedirect } from 'shared/lib/redirectHelpers';
+
+/**
+ * Validates that the parameters either do not have
+ * a tab parameter, or have a parameter that matches a
+ * value in `tabEnum`
+ * @param tabEnum a TypeScript string enum
+ */
+function tabParamValidator(tabEnum) {
+    return function(params) {
+        return !params.tab || Object.values(tabEnum).indexOf(params.tab) > -1;
+    };
+}
+
+/**
+ * Validates results page and patient page custom tabs
+ * @param location
+ */
+function customTabParamValidator(location) {
+    const resultsRegex = /results\/customTab\d+/;
+    const patientViewRegex = new RegExp(
+        `patient\/${PatientViewResourceTabPrefix}.+`
+    );
+    const studyViewRegex = new RegExp(`study\/${StudyViewResourceTabPrefix}.+`);
+    return (
+        location.pathname.match(resultsRegex) !== null ||
+        patientViewRegex.test(location.pathname) ||
+        studyViewRegex.test(location.pathname)
+    );
+}
 
 // accepts bundle-loader's deferred loader function and defers execution of route's render
 // until chunk is loaded
-function lazyLoadComponent(loader, loadingCallback) {
+function lazyLoadComponent(
+    loader,
+    loadingCallback,
+    validator = _ => {
+        return true;
+    }
+) {
     return (location, cb) => {
+        if (
+            location &&
+            !(
+                validator(location.params) ||
+                customTabParamValidator(location.location)
+            )
+        ) {
+            loader = ErrorPage;
+        }
         loader(module => {
-            if (cb) cb(null, module.default);
-            if (loadingCallback) loadingCallback();
-            // if (typeof window.onReactAppReady === 'function') {
-            //     window.onReactAppReady();
-            // }
+            if (cb) {
+                cb(null, module.default);
+            }
+            if (loadingCallback) {
+                loadingCallback();
+            }
         });
     };
 }
@@ -122,37 +178,72 @@ export const makeRoutes = routing => {
                 }}
                 component={GroupComparisonLoading}
             />
+
+            {/* Redirect legacy survival route directly to survival tab in comparison */}
             <Route
-                path="/results/legacy_submission"
-                onEnter={handleLegacySubmission}
+                path={`/results/${ResultsViewTab.SURVIVAL_REDIRECT}`}
+                onEnter={() => {
+                    redirectTo(
+                        { comparison_subtab: 'survival' },
+                        '/results/comparison'
+                    );
+                }}
+                component={getBlankPage()}
+            />
+
+            {/* Redirect legacy enrichments route directly to mutations tab in comparison */}
+            <Route
+                path="/results/enrichments"
+                onEnter={() => {
+                    redirectTo(
+                        { comparison_subtab: 'mutations' },
+                        '/results/comparison'
+                    );
+                }}
                 component={getBlankPage()}
             />
 
             <Route
                 path="/results(/:tab)"
                 onEnter={() => {}}
-                getComponent={lazyLoadComponent(ResultsViewPage)}
+                getComponent={lazyLoadComponent(
+                    ResultsViewPage,
+                    null,
+                    tabParamValidator(ResultsViewTab)
+                )}
             />
             <Route
                 path={'/' + PagePath.Patient + '(/:tab)'}
                 onEnter={() => {
                     $(document).scrollTop(0);
                 }}
-                getComponent={lazyLoadComponent(PatientViewPage)}
+                getComponent={lazyLoadComponent(
+                    PatientViewPage,
+                    null,
+                    tabParamValidator(PatientViewPageTabs)
+                )}
             />
             <Route
-                path="/study(/:tab)"
+                path={'/' + PagePath.Study + '(/:tab)'}
                 onEnter={() => {
                     $(document).scrollTop(0);
                 }}
-                getComponent={lazyLoadComponent(StudyViewPage)}
+                getComponent={lazyLoadComponent(
+                    StudyViewPage,
+                    null,
+                    tabParamValidator(StudyViewPageTabKeyEnum)
+                )}
             />
             <Route
                 path="/comparison(/:tab)"
                 onEnter={() => {
                     $(document).scrollTop(0);
                 }}
-                getComponent={lazyLoadComponent(GroupComparisonPage)}
+                getComponent={lazyLoadComponent(
+                    GroupComparisonPage,
+                    null,
+                    tabParamValidator(GroupComparisonTab)
+                )}
             />
 
             <Route
@@ -202,6 +293,13 @@ export const makeRoutes = routing => {
                 getComponent={lazyLoadComponent(AboutUs)}
             />
             <Route
+                path="/software"
+                onEnter={() => {
+                    $(document).scrollTop(0);
+                }}
+                getComponent={lazyLoadComponent(Software)}
+            />
+            <Route
                 path="/news"
                 onEnter={handleEnter}
                 getComponent={lazyLoadComponent(News)}
@@ -247,6 +345,11 @@ export const makeRoutes = routing => {
             <Route
                 path="/link.do"
                 onEnter={handleLinkOut}
+                component={getBlankPage()}
+            />
+            <Route
+                path="/encodedRedirect"
+                onEnter={handleEncodedRedirect}
                 component={getBlankPage()}
             />
 

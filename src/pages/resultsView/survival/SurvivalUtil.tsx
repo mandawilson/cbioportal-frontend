@@ -1,43 +1,88 @@
-import {PatientSurvival} from "../../../shared/model/PatientSurvival";
-import {tsvFormat} from 'd3-dsv';
+import { PatientSurvival } from '../../../shared/model/PatientSurvival';
+import { tsvFormat } from 'd3-dsv';
 import jStat from 'jStat';
 import * as _ from 'lodash';
+import { ClinicalAttribute } from 'cbioportal-ts-api-client';
 
 export type ScatterData = {
-    x: number,
-    y: number,
-    patientId: string,
-    uniquePatientKey:string,
-    studyId: string,
-    status: boolean,
-    opacity?: number,
-    group?:string
-}
+    x: number;
+    y: number;
+    patientId: string;
+    uniquePatientKey: string;
+    studyId: string;
+    status: boolean;
+    opacity?: number;
+    group?: string;
+};
 
 export type DownSamplingOpts = {
-    xDenominator: number,
-    yDenominator: number,
-    threshold: number
-}
+    xDenominator: number;
+    yDenominator: number;
+    threshold: number;
+};
 
 export type GroupedScatterData = {
-    [key: string]: SurvivalCurveData
-}
+    [key: string]: SurvivalCurveData;
+};
 
 export type SurvivalCurveData = {
-    numOfCases: number,
-    line: any[],
-    scatterWithOpacity: ScatterData[],
-    scatter: ScatterData[]
-}
+    numOfCases: number;
+    line: any[];
+    scatterWithOpacity: ScatterData[];
+    scatter: ScatterData[];
+};
 
 export type SurvivalPlotFilters = {
-    x: [number, number],
-    y: [number, number]
-}
+    x: [number, number];
+    y: [number, number];
+};
+
+export type ParsedSurvivalData = {
+    status: string | undefined;
+    label: string;
+};
+
+export const survivalCasesHeaderText: { [prefix: string]: string } = {
+    OS: 'DECEASED',
+    PFS: 'Progressed',
+    DFS: 'Recurred/Progressed',
+    DSS: 'DECEASED',
+};
+
+export const survivalPlotTooltipxLabelWithEvent: {
+    [prefix: string]: string;
+} = {
+    // TODO text for PFS DSS?
+    OS: 'Time of Death',
+    PFS: 'Time of Death',
+    DFS: 'Time of relapse',
+    DSS: 'Time of Death',
+};
+
+export const plotsPriority: { [prefix: string]: number } = {
+    OS: 1,
+    DFS: 2,
+    PFS: 3,
+    DSS: 4,
+};
+
+// when try to find if a data is null
+// make sure add trim() and toLowerCase() for the value
+// this comparision is ignoring the cases and leading/trailing white space and line terminator characters from a string.
+export const survivalClinicalDataNullValueSet = new Set([
+    '[not applicable]',
+    '[not available]',
+    '[pending]',
+    '[discrepancy]',
+    '[completed]',
+    '[null]',
+    '',
+    'na',
+]);
+
+export const DEFAULT_SURVIVAL_PRIORITY = 999;
 
 export function getEstimates(patientSurvivals: PatientSurvival[]): number[] {
-
     let estimates: number[] = [];
     let previousEstimate: number = 1;
     patientSurvivals.forEach((patientSurvival, index) => {
@@ -53,38 +98,106 @@ export function getEstimates(patientSurvivals: PatientSurvival[]): number[] {
     return estimates;
 }
 
-export function getMedian(patientSurvivals: PatientSurvival[], estimates: number[]): string {
+export function parseSurvivalData(s: string) {
+    const splitStatusAndLabel = s.split(':').map(text => text.trim());
+    let status = undefined;
+    let label = undefined;
+    // survival data in new format "status:label"
+    if (splitStatusAndLabel.length === 2) {
+        status = splitStatusAndLabel[0];
+        label = splitStatusAndLabel[1];
+    } else {
+        // old format "label"
+        label = splitStatusAndLabel[0];
+    }
 
-    let median: string = "NA";
+    // if status not exists, status will be undefined
+    return {
+        status,
+        label,
+    } as ParsedSurvivalData;
+}
+
+export function getSurvivalStatusBoolean(s: string, prefix: string) {
+    const parsedSurvivalData = parseSurvivalData(s);
+    if (parsedSurvivalData.status) {
+        return parsedSurvivalData.status === '1';
+    }
+    // return false as default for values that cannot get mapped
+    return false;
+}
+
+export function getStatusCasesHeaderText(
+    prefix: string,
+    uniqueSurvivalData: string[]
+): string {
+    // if not found set as 'Event'
+    let text = 'Event';
+
+    if (prefix in survivalCasesHeaderText) {
+        text = survivalCasesHeaderText[prefix];
+    } else {
+        // find first data with '1:' prefix
+        _.forEach(uniqueSurvivalData, data => {
+            const splitData = data.split(':');
+            if (splitData.length == 2 && splitData[0] === '1') {
+                text = splitData[1];
+                // first one found, return result
+                return false;
+            }
+        });
+    }
+    return _.startCase(_.toLower(text));
+}
+
+export function isNullSurvivalClinicalDataValue(value: string) {
+    return survivalClinicalDataNullValueSet.has(value.trim().toLowerCase());
+}
+
+export function getMedian(
+    patientSurvivals: PatientSurvival[],
+    estimates: number[]
+): string {
+    let median: string = 'NA';
     for (let i = 0; i < estimates.length; i++) {
         if (estimates[i] <= 0.5) {
-            median = patientSurvivals[i].months.toString();
+            median = patientSurvivals[i].months.toFixed(2);
             break;
         }
     }
     return median;
 }
 
-export function getLineData(patientSurvivals: PatientSurvival[], estimates: number[]): any[] {
-
+export function getLineData(
+    patientSurvivals: PatientSurvival[],
+    estimates: number[]
+): any[] {
     let chartData: any[] = [];
 
     chartData.push({ x: 0, y: 100 });
     patientSurvivals.forEach((patientSurvival, index) => {
-        chartData.push({ x: patientSurvival.months, y: estimates[index] * 100 })
+        chartData.push({
+            x: patientSurvival.months,
+            y: estimates[index] * 100,
+        });
     });
 
     return chartData;
 }
 
-export function getScatterData(patientSurvivals: PatientSurvival[], estimates: number[], group?:string): ScatterData[] {
-
+export function getScatterData(
+    patientSurvivals: PatientSurvival[],
+    estimates: number[],
+    group?: string
+): ScatterData[] {
     return patientSurvivals.map((patientSurvival, index) => {
-        const ret:ScatterData = {
-            x: patientSurvival.months, y: estimates[index] * 100,
-            patientId: patientSurvival.patientId, studyId: patientSurvival.studyId,
+        const ret: ScatterData = {
+            x: patientSurvival.months,
+            y: estimates[index] * 100,
+            patientId: patientSurvival.patientId,
+            studyId: patientSurvival.studyId,
             uniquePatientKey: patientSurvival.uniquePatientKey,
-            status: patientSurvival.status
+            status: patientSurvival.status,
         };
         if (group) {
             ret.group = group;
@@ -93,8 +206,11 @@ export function getScatterData(patientSurvivals: PatientSurvival[], estimates: n
     });
 }
 
-export function getScatterDataWithOpacity(patientSurvivals: PatientSurvival[], estimates: number[], group?:string): any[] {
-
+export function getScatterDataWithOpacity(
+    patientSurvivals: PatientSurvival[],
+    estimates: number[],
+    group?: string
+): any[] {
     let scatterData = getScatterData(patientSurvivals, estimates, group);
     let chartData: any[] = [];
     let previousEstimate: number;
@@ -112,70 +228,95 @@ export function getScatterDataWithOpacity(patientSurvivals: PatientSurvival[], e
     return chartData;
 }
 
-export function getStats(patientSurvivals?: PatientSurvival[], estimates?: number[]): [number, number, string] {
+export function getStats(
+    patientSurvivals?: PatientSurvival[],
+    estimates?: number[]
+): [number, number, string] {
     if (patientSurvivals && estimates) {
-        return [patientSurvivals.length,
-        patientSurvivals.filter(patientSurvival => patientSurvival.status === true).length,
-        getMedian(patientSurvivals, estimates)];
+        return [
+            patientSurvivals.length,
+            patientSurvivals.filter(
+                patientSurvival => patientSurvival.status === true
+            ).length,
+            getMedian(patientSurvivals, estimates),
+        ];
     } else {
-        return [0, 0, "N/A"];
+        return [0, 0, 'N/A'];
     }
 }
 
-export function calculateLogRank(alteredPatientSurvivals: PatientSurvival[],
-    unalteredPatientSurvivals: PatientSurvival[]): number {
-
+export function calculateLogRank(
+    alteredPatientSurvivals: PatientSurvival[],
+    unalteredPatientSurvivals: PatientSurvival[]
+): number {
     let alteredIndex = 0;
     let unalteredIndex = 0;
     let totalAlteredNumberOfFailure = 0;
     let totalExpectation = 0;
     let totalVariance = 0;
 
-    while (alteredIndex < alteredPatientSurvivals.length && unalteredIndex < unalteredPatientSurvivals.length) {
-
+    while (
+        alteredIndex < alteredPatientSurvivals.length &&
+        unalteredIndex < unalteredPatientSurvivals.length
+    ) {
         let alteredNumberOfFailure = 0;
         let unalteredNumberOfFailure = 0;
         const alteredAtRisk = alteredPatientSurvivals.length - alteredIndex;
-        const unalteredAtRisk = unalteredPatientSurvivals.length - unalteredIndex;
+        const unalteredAtRisk =
+            unalteredPatientSurvivals.length - unalteredIndex;
         const alteredPatientSurvival = alteredPatientSurvivals[alteredIndex];
-        const unalteredPatientSurvival = unalteredPatientSurvivals[unalteredIndex];
+        const unalteredPatientSurvival =
+            unalteredPatientSurvivals[unalteredIndex];
 
-        if (alteredPatientSurvival.months < unalteredPatientSurvival.months ||
-            alteredPatientSurvival.months === unalteredPatientSurvival.months) {
+        if (
+            alteredPatientSurvival.months < unalteredPatientSurvival.months ||
+            alteredPatientSurvival.months === unalteredPatientSurvival.months
+        ) {
             if (alteredPatientSurvival.status) {
                 alteredNumberOfFailure = 1;
             }
             alteredIndex += 1;
         }
 
-        if (alteredPatientSurvival.months > unalteredPatientSurvival.months ||
-            alteredPatientSurvival.months === unalteredPatientSurvival.months) {
+        if (
+            alteredPatientSurvival.months > unalteredPatientSurvival.months ||
+            alteredPatientSurvival.months === unalteredPatientSurvival.months
+        ) {
             if (unalteredPatientSurvival.status) {
                 unalteredNumberOfFailure = 1;
             }
             unalteredIndex += 1;
         }
 
-        const numberOfFailures = alteredNumberOfFailure + unalteredNumberOfFailure;
+        const numberOfFailures =
+            alteredNumberOfFailure + unalteredNumberOfFailure;
         const atRisk = alteredAtRisk + unalteredAtRisk;
-        const expectation = (alteredAtRisk / (atRisk)) * (numberOfFailures);
-        const variance = (numberOfFailures * (atRisk - numberOfFailures) * alteredAtRisk * unalteredAtRisk) /
-            ((atRisk * atRisk) * (atRisk - 1));
+        const expectation = (alteredAtRisk / atRisk) * numberOfFailures;
+        const variance =
+            (numberOfFailures *
+                (atRisk - numberOfFailures) *
+                alteredAtRisk *
+                unalteredAtRisk) /
+            (atRisk * atRisk * (atRisk - 1));
 
         totalAlteredNumberOfFailure += alteredNumberOfFailure;
         totalExpectation += expectation;
         totalVariance += variance;
     }
 
-    const chiSquareScore = (totalAlteredNumberOfFailure - totalExpectation) *
-        (totalAlteredNumberOfFailure - totalExpectation) / totalVariance;
+    const chiSquareScore =
+        ((totalAlteredNumberOfFailure - totalExpectation) *
+            (totalAlteredNumberOfFailure - totalExpectation)) /
+        totalVariance;
 
     return 1 - jStat.chisquare.cdf(chiSquareScore, 1);
 }
 
-export function getDownloadContent(data:{ scatterData: ScatterData[], title:string}[], mainTitle:string):string {
-
-    let content: string = mainTitle;// + '\n\n';// + alteredTitle + '\n';
+export function getDownloadContent(
+    data: { scatterData: ScatterData[]; title: string }[],
+    mainTitle: string
+): string {
+    let content: string = mainTitle; // + '\n\n';// + alteredTitle + '\n';
     for (const d of data) {
         content += '\n\n';
         content += d.title;
@@ -186,15 +327,18 @@ export function getDownloadContent(data:{ scatterData: ScatterData[], title:stri
 }
 
 export function convertScatterDataToDownloadData(patientData: any[]): any[] {
-
     const downloadData: any[] = [];
 
     patientData.map((datum, index) => {
         downloadData.push({
-            "Case ID": datum.patientId, "Study ID": datum.studyId, "Number at Risk": patientData.length - index,
-            "Status": datum.status ? "deceased" : "censored", "Survival Rate": datum.y / 100, "Time (months)": datum.x
+            'Case ID': datum.patientId,
+            'Study ID': datum.studyId,
+            'Number at Risk': patientData.length - index,
+            Status: datum.status ? 'deceased' : 'censored',
+            'Survival Rate': datum.y / 100,
+            'Time (months)': datum.x,
         });
-    })
+    });
 
     return downloadData;
 }
@@ -205,30 +349,35 @@ export function convertScatterDataToDownloadData(patientData: any[]): any[] {
  * @param {DownSampling} opts
  * @returns {ScatterData[]}
  */
-export function downSampling(data: ScatterData[], opts: DownSamplingOpts): ScatterData[] {
+export function downSampling(
+    data: ScatterData[],
+    opts: DownSamplingOpts
+): ScatterData[] {
     let xMax = _.maxBy(data, 'x');
     let xMin = _.minBy(data, 'x');
 
     let yMax = _.maxBy(data, 'y');
     let yMin = _.minBy(data, 'y');
 
-    if (opts.xDenominator <= 0 || opts.yDenominator <= 0)
-        return data;
+    if (opts.xDenominator <= 0 || opts.yDenominator <= 0) return data;
 
-    let timeThreshold = ((xMax ? xMax.x : 0) - (xMin ? xMin.x : 0)) / opts.xDenominator;
-    let survivalRateThreshold = ((yMax ? yMax.y : 0) - (yMin ? yMin.y : 0)) / opts.yDenominator;
+    let timeThreshold =
+        ((xMax ? xMax.x : 0) - (xMin ? xMin.x : 0)) / opts.xDenominator;
+    let survivalRateThreshold =
+        ((yMax ? yMax.y : 0) - (yMin ? yMin.y : 0)) / opts.yDenominator;
     let averageThreshold = Math.hypot(timeThreshold, survivalRateThreshold);
     let lastVisibleDataPoint = {
         x: 0,
-        y: 0
+        y: 0,
     };
     let lastDataPoint = {
         x: 0,
-        y: 0
+        y: 0,
     };
 
-    return data.filter(function (dataItem, index) {
-        let isVisibleDot = _.isUndefined(dataItem.opacity) || dataItem.opacity > 0;
+    return data.filter(function(dataItem, index) {
+        let isVisibleDot =
+            _.isUndefined(dataItem.opacity) || dataItem.opacity > 0;
         if (index == 0) {
             lastDataPoint.x = dataItem.x;
             lastDataPoint.y = dataItem.y;
@@ -238,9 +387,15 @@ export function downSampling(data: ScatterData[], opts: DownSamplingOpts): Scatt
         }
         let distance = 0;
         if (isVisibleDot) {
-            distance = Math.hypot(dataItem.x - lastVisibleDataPoint.x, dataItem.y - lastVisibleDataPoint.y)
+            distance = Math.hypot(
+                dataItem.x - lastVisibleDataPoint.x,
+                dataItem.y - lastVisibleDataPoint.y
+            );
         } else {
-            distance = Math.hypot(dataItem.x - lastDataPoint.x, dataItem.y - lastDataPoint.y);
+            distance = Math.hypot(
+                dataItem.x - lastDataPoint.x,
+                dataItem.y - lastDataPoint.y
+            );
         }
         if (distance > averageThreshold) {
             lastDataPoint.x = dataItem.x;
@@ -256,39 +411,56 @@ export function downSampling(data: ScatterData[], opts: DownSamplingOpts): Scatt
     });
 }
 
-export function filterScatterData(allScatterData: GroupedScatterData, filters: SurvivalPlotFilters | undefined, downSamplingOpts: DownSamplingOpts):GroupedScatterData {
+export function filterScatterData(
+    allScatterData: GroupedScatterData,
+    filters: SurvivalPlotFilters | undefined,
+    downSamplingOpts: DownSamplingOpts
+): GroupedScatterData {
     let filteredData = _.cloneDeep(allScatterData);
-    _.forEach(filteredData, (value:SurvivalCurveData) => {
+    _.forEach(filteredData, (value: SurvivalCurveData) => {
         if (value.numOfCases > downSamplingOpts.threshold) {
             if (filters) {
-                value.scatter = value.scatter.filter((_val) => filterBasedOnCoordinates(filters, _val));
-                value.scatterWithOpacity = value.scatterWithOpacity.filter((_val) => filterBasedOnCoordinates(filters, _val));
+                value.scatter = value.scatter.filter(_val =>
+                    filterBasedOnCoordinates(filters, _val)
+                );
+                value.scatterWithOpacity = value.scatterWithOpacity.filter(
+                    _val => filterBasedOnCoordinates(filters, _val)
+                );
             }
             value.scatter = downSampling(value.scatter, downSamplingOpts);
-            value.scatterWithOpacity = downSampling(value.scatterWithOpacity, downSamplingOpts);
+            value.scatterWithOpacity = downSampling(
+                value.scatterWithOpacity,
+                downSamplingOpts
+            );
             value.numOfCases = value.scatter.length;
         }
     });
     return filteredData;
 }
 
-function filterBasedOnCoordinates(filters: SurvivalPlotFilters, _val:ScatterData) {
-    if (_val.x <= filters.x[1] && _val.x >= filters.x[0]
-        && _val.y <= filters.y[1] && _val.y >= filters.y[0]) {
+function filterBasedOnCoordinates(
+    filters: SurvivalPlotFilters,
+    _val: ScatterData
+) {
+    if (
+        _val.x <= filters.x[1] &&
+        _val.x >= filters.x[0] &&
+        _val.y <= filters.y[1] &&
+        _val.y >= filters.y[0]
+    ) {
         return true;
     }
     return false;
 }
 
-
-export const ALTERED_GROUP_VALUE = "Altered";
-export const UNALTERED_GROUP_VALUE = "Unaltered";
+export const ALTERED_GROUP_VALUE = 'Altered';
+export const UNALTERED_GROUP_VALUE = 'Unaltered';
 
 export function getSurvivalChartDataByAlteredStatus(
-    alteredSurvivals:PatientSurvival[],
-    unalteredSurvivals:PatientSurvival[]
+    alteredSurvivals: PatientSurvival[],
+    unalteredSurvivals: PatientSurvival[]
 ) {
-    const patientToAnalysisGroups:{[patientKey:string]:string[]} = {};
+    const patientToAnalysisGroups: { [patientKey: string]: string[] } = {};
     for (const s of alteredSurvivals) {
         patientToAnalysisGroups[s.uniquePatientKey] = [ALTERED_GROUP_VALUE];
     }
@@ -297,6 +469,35 @@ export function getSurvivalChartDataByAlteredStatus(
     }
     return {
         patientSurvivals: alteredSurvivals.concat(unalteredSurvivals),
-        patientToAnalysisGroups
+        patientToAnalysisGroups,
     };
+}
+
+export function generateSurvivalPlotTitleFromDisplayName(title: string) {
+    return title.replace(/status|survival/gi, '');
+}
+
+export function generateStudyViewSurvivalPlotTitle(title: string) {
+    let result = title.replace(/status/gi, '');
+    return /survival/i.test(result) ? result : `${result} Survival`;
+}
+
+export function getSurvivalAttributes(clinicalAttributes: ClinicalAttribute[]) {
+    return _.chain(clinicalAttributes)
+        .map(attr => attr.clinicalAttributeId)
+        .filter(id => /_STATUS$/i.test(id) || /_MONTHS$/i.test(id))
+        .uniq()
+        .value();
+}
+
+export function notSurvivalAttribute(
+    survivalClinicalAttributesPrefixes: string[],
+    attributeId: string
+) {
+    return _.every(survivalClinicalAttributesPrefixes, prefix => {
+        return (
+            `${prefix}_STATUS` !== attributeId &&
+            `${prefix}_MONTHS` !== attributeId
+        );
+    });
 }

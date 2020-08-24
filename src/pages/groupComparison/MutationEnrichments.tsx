@@ -1,82 +1,99 @@
-import * as React from "react";
-import { observer } from "mobx-react";
-import GroupComparisonStore from "./GroupComparisonStore";
-import { MolecularProfile } from "../../shared/api/generated/CBioPortalAPI";
-import LoadingIndicator from "../../shared/components/loadingIndicator/LoadingIndicator";
-import ErrorMessage from "../../shared/components/ErrorMessage";
-import EnrichmentsDataSetDropdown from "../resultsView/enrichments/EnrichmentsDataSetDropdown";
-import AlterationEnrichmentContainer from "../resultsView/enrichments/AlterationEnrichmentsContainer";
-import autobind from "autobind-decorator";
-import { MakeMobxView } from "../../shared/components/MobxView";
-import { MakeEnrichmentsTabUI, getNumSamples } from "./GroupComparisonUtils";
-import { remoteData } from "public-lib/api/remoteData";
-import { ResultsViewPageStore } from "../resultsView/ResultsViewPageStore";
-import _ from "lodash";
-import { AlterationContainerType } from "pages/resultsView/enrichments/EnrichmentsUtil";
+import * as React from 'react';
+import { observer } from 'mobx-react';
+import { MolecularProfile } from 'cbioportal-ts-api-client';
+import LoadingIndicator from '../../shared/components/loadingIndicator/LoadingIndicator';
+import ErrorMessage from '../../shared/components/ErrorMessage';
+import EnrichmentsDataSetDropdown from '../resultsView/enrichments/EnrichmentsDataSetDropdown';
+import AlterationEnrichmentContainer from '../resultsView/enrichments/AlterationEnrichmentsContainer';
+import autobind from 'autobind-decorator';
+import { MakeMobxView } from '../../shared/components/MobxView';
+import { MakeEnrichmentsTabUI } from './GroupComparisonUtils';
+import _ from 'lodash';
+import { AlterationContainerType } from 'pages/resultsView/enrichments/EnrichmentsUtil';
+import ComparisonStore from '../../shared/lib/comparison/ComparisonStore';
+import { ResultsViewPageStore } from '../resultsView/ResultsViewPageStore';
 
 export interface IMutationEnrichmentsProps {
-    store: GroupComparisonStore
+    store: ComparisonStore;
+    resultsViewStore?: ResultsViewPageStore;
 }
 
 @observer
-export default class MutationEnrichments extends React.Component<IMutationEnrichmentsProps, {}> {
-
+export default class MutationEnrichments extends React.Component<
+    IMutationEnrichmentsProps,
+    {}
+> {
     @autobind
-    private onChangeProfile(profileMap:{[studyId:string]:MolecularProfile}) {
+    private onChangeProfile(profileMap: {
+        [studyId: string]: MolecularProfile;
+    }) {
         this.props.store.setMutationEnrichmentProfileMap(profileMap);
     }
 
-    readonly tabUI = MakeEnrichmentsTabUI(()=>this.props.store, ()=>this.enrichmentsUI, "mutation", true, true, true);
-
-    private readonly enrichmentAnalysisGroups = remoteData({
-        await:()=>[this.props.store.activeGroups],
-        invoke:()=>{
-            const groups = _.map(this.props.store.activeGroups.result, group => {
-                return {
-                    name:group.nameWithOrdinal,
-                    description:`Number (percentage) of ${this.props.store.usePatientLevelEnrichments ? "patients" : "samples"} in ${group.nameWithOrdinal} that have a mutation in the listed gene.`,
-                    count: getNumSamples(group),
-                    color: group.color
-                }
-            })
-            return Promise.resolve(groups);
-        }
-    });
+    readonly tabUI = MakeEnrichmentsTabUI(
+        () => this.props.store,
+        () => this.enrichmentsUI,
+        'mutation',
+        true,
+        true,
+        true
+    );
 
     readonly enrichmentsUI = MakeMobxView({
-        await:()=>[
+        await: () => [
             this.props.store.mutationEnrichmentData,
             this.props.store.selectedStudyMutationEnrichmentProfileMap,
-            this.enrichmentAnalysisGroups,
-            this.props.store.studies
+            this.props.store.mutationEnrichmentAnalysisGroups,
+            this.props.store.studies,
         ],
-        render:()=>{
-            let headerName = "Mutation";
-            let studyIds = Object.keys(this.props.store.selectedStudyMutationEnrichmentProfileMap.result!);
+        render: () => {
+            let headerName = 'Mutation';
+            let studyIds = Object.keys(
+                this.props.store.selectedStudyMutationEnrichmentProfileMap
+                    .result!
+            );
             if (studyIds.length === 1) {
-                headerName = this.props.store.selectedStudyMutationEnrichmentProfileMap.result![studyIds[0]].name
+                headerName = this.props.store
+                    .selectedStudyMutationEnrichmentProfileMap.result![
+                    studyIds[0]
+                ].name;
             }
             return (
                 <div data-test="GroupComparisonMutationEnrichments">
                     <EnrichmentsDataSetDropdown
                         dataSets={this.props.store.mutationEnrichmentProfiles}
                         onChange={this.onChangeProfile}
-                        selectedProfileByStudyId={this.props.store.selectedStudyMutationEnrichmentProfileMap.result!}
+                        selectedProfileByStudyId={
+                            this.props.store
+                                .selectedStudyMutationEnrichmentProfileMap
+                                .result!
+                        }
                         studies={this.props.store.studies.result!}
                     />
-                    <AlterationEnrichmentContainer data={this.props.store.mutationEnrichmentData.result!}
-                        groups={this.enrichmentAnalysisGroups.result}
+                    <AlterationEnrichmentContainer
+                        data={this.props.store.mutationEnrichmentData.result!}
+                        groups={
+                            this.props.store.mutationEnrichmentAnalysisGroups
+                                .result
+                        }
                         alteredVsUnalteredMode={false}
                         headerName={headerName}
                         containerType={AlterationContainerType.MUTATION}
-                        patientLevelEnrichments={this.props.store.usePatientLevelEnrichments}
-                        onSetPatientLevelEnrichments={this.props.store.setUsePatientLevelEnrichments}
+                        patientLevelEnrichments={
+                            this.props.store.usePatientLevelEnrichments
+                        }
+                        onSetPatientLevelEnrichments={
+                            this.props.store.setUsePatientLevelEnrichments
+                        }
+                        store={this.props.resultsViewStore}
                     />
                 </div>
             );
         },
-        renderPending:()=><LoadingIndicator center={true} isLoading={true} size={"big"}/>,
-        renderError:()=><ErrorMessage/>
+        renderPending: () => (
+            <LoadingIndicator center={true} isLoading={true} size={'big'} />
+        ),
+        renderError: () => <ErrorMessage />,
     });
 
     render() {

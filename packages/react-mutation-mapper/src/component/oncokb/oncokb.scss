@@ -1,0 +1,10 @@
+@import '~oncokb-styles/scss/vars';
+
+.oncokb-tooltip {
+    background: none;
+
+    .rc-tooltip-inner {
+        padding: 0;
+        border-color: $oncokb-border-color;
+    }
+}

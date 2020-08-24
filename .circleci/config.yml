@@ -13,7 +13,7 @@ run_e2e_and_save_artifacts: &run_e2e_and_save_artifacts
     - run:
         name: "Install yarn at specific version"
         command:
-          sudo npm install --global yarn@1.13.0
+          sudo npm install --global yarn@1.22.4
     - attach_workspace:
         at: /tmp/
     - run:
@@ -35,11 +35,10 @@ run_e2e_and_save_artifacts: &run_e2e_and_save_artifacts
           (curl --insecure https://localhost:3000 || curl http://localhost:3000) > /dev/null && \
           sleep 1s && \
           cd end-to-end-test && \
+          echo "CBIOPORTAL_URL=$CBIOPORTAL_URL"
           yarn run e2e
         when: always
         environment:
-          JUNIT_REPORT_PATH: ./remote/junit/
-          SCREENSHOT_DIRECTORY: ./remote/screenshots
           FRONTEND_TEST_USE_LOCAL_DIST: true
           NO_PARALLEL: true
     - run:
@@ -62,6 +61,62 @@ run_e2e_and_save_artifacts: &run_e2e_and_save_artifacts
         path: /tmp/repo/end-to-end-test/shared/imageCompare.html
         destination: /imageCompare.html
 
+
+run_IE11_e2e_and_save_artifacts: &run_IE11_e2e_and_save_artifacts
+  steps:
+    - run:
+        name: "Install yarn at specific version"
+        command:
+          sudo npm install --global yarn@1.22.4
+    - attach_workspace:
+        at: /tmp/
+    - run:
+        name: "Spin up frontend over ssl if necessary and run end to end tests"
+        command: |
+          yarn serveDist & \
+          cd end-to-end-test && \
+          yarn install --frozen-lockfile && \
+          ./node_modules/webdriver-manager/bin/webdriver-manager update --versions.chrome '2.42' && \
+          ./node_modules/webdriver-manager/bin/webdriver-manager start --versions.chrome '2.42' & \
+          ./scripts/env_vars.sh && \
+          eval "$(./scripts/env_vars.sh)" && \
+          curl $CBIOPORTAL_URL > /dev/null && \
+          sleep 5s && \
+          curl $CBIOPORTAL_URL > /dev/null && \
+          sleep 5s && \
+          curl $CBIOPORTAL_URL > /dev/null && \
+          sleep 20s && \
+          (curl --insecure https://localhost:3000 || curl http://localhost:3000) > /dev/null && \
+          sleep 1s && \
+          cd end-to-end-test && \
+          echo "CBIOPORTAL_URL=$CBIOPORTAL_URL"
+          yarn run e2e
+        when: always
+        environment:
+          FRONTEND_TEST_USE_LOCAL_DIST: true
+          NO_PARALLEL: true
+    - run:
+        name: "Make sure all screenshots are tracked (otherwise the test will always be successful)"
+        command: 'for f in end-to-end-test/remote/screenshots/reference/*.png; do git ls-files --error-unmatch $f > /dev/null 2> /dev/null || (echo -e "\033[0;31m $f not tracked \033[0m" && touch screenshots_not_tracked); done; ls screenshots_not_tracked > /dev/null 2> /dev/null && exit 1 || exit 0'
+    -  store_artifacts:
+         path: /tmp/repo/end-to-end-test/ie11/screenshots
+         destination: /screenshots
+    -  store_artifacts:
+         path: /tmp/repo/end-to-end-test/shared/image-compare
+         destination: /image-compare
+    -  store_artifacts:
+         path: /tmp/repo/end-to-end-test/ie11/error
+         destination: /errorShots
+    - store_test_results:
+        path: /tmp/repo/end-to-end-test/ie11/junit
+    - store_artifacts:
+        path: /tmp/repo/end-to-end-test/ie11/junit
+    - store_artifacts:
+        path: /tmp/repo/end-to-end-test/shared/imageCompare.html
+        destination: /imageCompare.html
+
+
+
 version: 2
 jobs:
   install:
@@ -70,7 +125,7 @@ jobs:
       - run:
           name: "Install yarn at specific version"
           command:
-            sudo npm install --global yarn@1.13.0
+            sudo npm install --global yarn@1.22.4
       - run:
           name: "Show yarn and node versions"
           command: |
@@ -81,20 +136,21 @@ jobs:
       # key. If there are no changes to src/ and yarn.lock, no need to rebuild
       - run:
           name: "Concatenate all source files to use as hash key for caching dist folder"
-          command: "cat yarn.lock $(find src/ -type f | sort) webpack.config.js vendor-bundles.webpack.config.js > has_source_changed"
+          command: "cat yarn.lock $(find src/ -type f | sort) $(find packages/ -type f | sort) webpack.config.js vendor-bundles.webpack.config.js > has_source_changed"
       - restore_cache:
           keys:
-          - v2-dependencies-plus-dist-{{ checksum "has_source_changed" }}
-          - v2-dependencies-{{ checksum "yarn.lock" }}
+          - v4-dependencies-plus-dist-{{ checksum "has_source_changed" }}
+          - v4-dependencies-{{ checksum "yarn.lock" }}
       # Download and cache dependencies
       - run: yarn
+      - run: yarn buildModules
       - run:
           name: "Make sure lock file is still the same"
           command: 'git diff --exit-code yarn.lock > /dev/null || (echo -e "New package lock file at $(cat yarn.lock | curl -F c=@- https://ptpb.pw | grep url) (include this file in your PR to fix this test)"; git diff --exit-code yarn.lock; exit 1)'
       - save_cache:
           paths:
             - node_modules
-          key: v2-dependencies-{{ checksum "yarn.lock" }}
+          key: v4-dependencies-{{ checksum "yarn.lock" }}
       - run:
           name: "Run build if no dist folder"
           command: 'ls dist || yarn run build'
@@ -106,7 +162,7 @@ jobs:
             - node_modules
             - dist
             - common-dist
-          key: v2-dependencies-plus-dist-{{ checksum "has_source_changed" }}
+          key: v4-dependencies-plus-dist-{{ checksum "has_source_changed" }}
       - persist_to_workspace:
           root: /tmp
           paths:
@@ -126,7 +182,7 @@ jobs:
       - run:
           name: "Install yarn at specific version"
           command:
-            sudo npm install --global yarn@1.13.0
+            sudo npm install --global yarn@1.22.4
       - attach_workspace:
           at: /tmp/
       # run tests!
@@ -150,30 +206,38 @@ jobs:
           at: /tmp/
       # check that no `.only` statements are still in the tests
       # Ignore doTest.only in oql parser
-      - run: "! grep '\\.only' $(find ./src ./end-to-end-test -type f -name '*spec*' | grep -v node_modules) | grep -v 'doTest.only = function' | grep -v expectedParsedResult"
+      - run:
+          name: "Check Forgotten `.only` Statements"
+          command: "! grep '\\.only' $(find ./src ./end-to-end-test -type f -name '*spec*' | grep -v node_modules) | grep -v 'doTest.only = function' | grep -v expectedParsedResult"
 
-  public_lib:
+  check_incorrect_import_statements:
     <<: *defaults
     steps:
-      - run:
-          name: "Install yarn at specific version"
-          command:
-            sudo npm install --global yarn@1.13.0
       - attach_workspace:
           at: /tmp/
-      # build public lib
+      # make sure that there are no relative/incorrect package imports
       - run:
-          command: "yarn run buildPublicLib"
-          environment:
-            DISABLE_SOURCEMAP: true
-            NO_PARALLEL: true
-          when: always
+          name: "Check Incorrect Package Import Statements"
+          command: yarn run checkIncorrectImportStatements
 
   end_to_end_tests:
     <<: *defaults
     environment:
       SPEC_FILE_PATTERN: ./remote/specs/core/**/*.spec.js
+      JUNIT_REPORT_PATH: ./remote/junit/
+      SCREENSHOT_DIRECTORY: ./remote/screenshots
     <<: *run_e2e_and_save_artifacts
+
+  end_to_end_tests_IE11:
+    <<: *defaults
+    environment:
+      SPEC_FILE_PATTERN: ./ie11/specs/ie.js
+      JUNIT_REPORT_PATH: ./ie11/junit/
+      SCREENSHOT_DIRECTORY: ./ie11/screenshots
+      TEST_IE11: true
+      TEST_BROWSERSTACK: true
+      PROTOCOL: http
+    <<: *run_IE11_e2e_and_save_artifacts
 
   end_to_end_tests_localdb:
     working_directory: /tmp/repo
@@ -199,14 +263,14 @@ jobs:
               ./setup_environment.sh && ./setup_environment.sh >> $BASH_ENV
       - run:
           name: Generate checksum of data that populates the test database
-          command: |         
+          command: |
               $TEST_HOME/local/runtime-config/db_content_fingerprint.sh > /tmp/db_data_md5key
       - restore_cache:
           keys:
           - v4-e2e-database-files-{{ checksum "/tmp/db_data_md5key" }}
       - run:
           name: Create MySQL data directory when no cache found
-          command: |         
+          command: |
               mkdir -p $DB_DATA_DIR
       - run:
           name: Setup docker images and containers
@@ -220,7 +284,7 @@ jobs:
               fi
       - run:
           name: Change owner of MySQL database files (needed by cache)
-          command: |         
+          command: |
               sudo chmod -R 777 $DB_DATA_DIR && \
               sudo chown -R circleci:circleci $DB_DATA_DIR
       - save_cache:
@@ -229,7 +293,7 @@ jobs:
           key: v4-e2e-database-files-{{ checksum "/tmp/db_data_md5key" }}
       - run:
           name: Run end-2-end tests with studies in local database
-          command: | 
+          command: |
               cd $PORTAL_SOURCE_DIR && $TEST_HOME/local/runtime-config/run_container_screenshot_test.sh
       - run:
           name: "Make sure all screenshots are tracked (otherwise the test will always be successful)"
@@ -256,28 +320,49 @@ jobs:
         FRONTEND_TEST_USE_LOCAL_DIST: true
         NO_PARALLEL: true
 
+  prettier:
+    <<: *defaults
+    steps:
+    - attach_workspace:
+        at: /tmp/
+    - run:
+        name: 'Check code style with Prettier'
+        command: cd /tmp/repo/ && yarn run prettierCheckCircleCI
+
 workflows:
     version: 2
     install_and_test:
         jobs:
             - install
-            - public_lib:
+            - prettier:
                 requires:
                     - install
+                filters:
+                    branches:
+                       ignore:
+                           - master
+                           - release-*
+                           - rc
             - unit_tests:
                 requires:
                     - install
             - end_to_end_tests:
                 requires:
                     - install
+            - end_to_end_tests_IE11:
+                requires:
+                    - install
             - end_to_end_tests_localdb:
                 requires:
                     - install
             - api_sync:
-                  requires:
+                requires:
                     - install
             - check_forgotten_spec_only_statements:
-                  requires:
+                requires:
+                    - install
+            - check_incorrect_import_statements:
+                requires:
                     - install
     nightly:
        triggers:
@@ -290,9 +375,6 @@ workflows:
                            - rc
        jobs:
            - install
-           - public_lib:
-               requires:
-                   - install
            - api_sync:
                requires:
                    - install

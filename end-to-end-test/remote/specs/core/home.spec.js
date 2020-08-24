@@ -9,6 +9,7 @@ var {
     clickQueryByGeneButton,
     waitForNumberOfStudyCheckboxes,
     clickModifyStudySelectionButton,
+    waitForOncoprint,
 } = require('../../../shared/specUtils');
 
 const CBIOPORTAL_URL = process.env.CBIOPORTAL_URL.replace(/\/$/, '');
@@ -21,11 +22,15 @@ describe('homepage', function() {
     });
 
     if (useExternalFrontend) {
-        it('it should show dev mode when testing', function() {
-            var devMode = $('.alert-warning');
-
-            devMode.waitForExist(10000);
-            assert(browser.getText('.alert-warning').indexOf('dev mode') > 0);
+        it('window.frontendConfig.frontendUrl should point to localhost 3000 when testing', function() {
+            // We no longer check whether the dev mode banner exits.
+            // The banner is hidden in e2etests.scss
+            assert.equal(
+                browser.execute(function() {
+                    return window.frontendConfig.frontendUrl;
+                }).value,
+                '//localhost:3000/'
+            );
         });
     }
 
@@ -36,7 +41,7 @@ describe('homepage', function() {
 
         studies.waitForExist(10000); // same as `browser.waitForExist('.notification', 10000)`
 
-        expect([27, 29, 32]).to.include(
+        expect([27, 29, 33]).to.include(
             browser.elements('[data-test="cancerTypeListContainer"] > ul > ul')
                 .value.length
         );
@@ -49,7 +54,7 @@ describe('homepage', function() {
 
         setInputText(searchInputSelector, 'bladder');
 
-        waitForNumberOfStudyCheckboxes(3);
+        waitForNumberOfStudyCheckboxes(4);
     });
 
     it('when a single study is selected, a case set selector is provided', function() {
@@ -61,7 +66,7 @@ describe('homepage', function() {
 
         assert.equal(browser.isExisting(caseSetSelectorClass), false);
 
-        browser.click('[data-test="StudySelect"]');
+        browser.click('[data-test="StudySelect"] input');
 
         clickQueryByGeneButton();
 
@@ -271,10 +276,10 @@ describe('case set selection in front page query form', function() {
 
         // select Adrenocortical Carcinoma
         browser.waitForExist(input, 10000);
-        setInputText(input, 'adrenocortical carcinoma tcga provisional');
+        setInputText(input, 'adrenocortical carcinoma tcga firehose legacy');
         waitForNumberOfStudyCheckboxes(
             1,
-            'Adrenocortical Carcinoma (TCGA, Provisional)'
+            'Adrenocortical Carcinoma (TCGA, Firehose Legacy)'
         );
         checkBox = $('[data-test="StudySelect"]');
         checkBox.waitForExist(10000);
@@ -372,7 +377,7 @@ describe('case set selection in front page query form', function() {
 
         // select Adrenocortical Carcinoma
         browser.waitForExist(input, 10000);
-        setInputText(input, 'adrenocortical carcinoma tcga provisional');
+        setInputText(input, 'adrenocortical carcinoma tcga firehose legacy');
         waitForNumberOfStudyCheckboxes(1);
         checkBox = $('[data-test="StudySelect"]');
         checkBox.waitForExist(10000);
@@ -532,9 +537,9 @@ describe('genetic profile selection in front page query form', () => {
 
         clickModifyStudySelectionButton();
 
-        // select all tcga provisional
+        // select all tcga firehose legacy studies
         browser.waitForExist(input, 10000);
-        setInputText(input, 'tcga provisional');
+        setInputText(input, 'tcga firehose');
         browser.pause(500);
         browser.click(
             'div[data-test="cancerTypeListContainer"] input[data-test="selectAllStudies"]'
@@ -566,7 +571,7 @@ describe('genetic profile selection in front page query form', () => {
 
         clickModifyStudySelectionButton();
 
-        // Deselect all tcga provisional studies
+        // Deselect all tcga firehose legacy studies
         browser.click(
             'div[data-test="cancerTypeListContainer"] input[data-test="selectAllStudies"]'
         );
@@ -597,6 +602,174 @@ describe('genetic profile selection in front page query form', () => {
                 'div[data-test="molecularProfileSelector"] input[type="checkbox"][data-test="MRNA_EXPRESSION"]'
             ),
             'mrna profile not selected'
+        );
+    });
+});
+
+describe('auto-selecting needed profiles for oql in query form', () => {
+    before(() => {
+        goToUrlAndSetLocalStorage(CBIOPORTAL_URL);
+    });
+    it.skip('gives a submit error if protein oql is inputted and no protein profile is available for the study', () => {
+        browser.waitForExist('.studyItem_acc_tcga_pan_can_atlas_2018', 20000);
+        browser.click('.studyItem_acc_tcga_pan_can_atlas_2018');
+        clickQueryByGeneButton();
+
+        // enter oql
+        browser.waitForExist('textarea[data-test="geneSet"]', 2000);
+        setInputText('textarea[data-test="geneSet"]', 'BRCA1: PROT>1');
+
+        // error appears
+        browser.waitUntil(() => {
+            return (
+                browser.isExisting('[data-test="oqlErrorMessage"]') &&
+                browser.getText('[data-test="oqlErrorMessage"]') ===
+                    'Protein level data query specified in OQL, but no protein level profile is available in the selected study.'
+            );
+        }, 20000);
+
+        // submit is disabled
+        assert(!browser.isEnabled('button[data-test="queryButton"]'));
+    });
+    it('auto-selects an mrna profile when mrna oql is entered', () => {
+        // make sure profiles selector is loaded
+        browser.waitForExist(
+            'div[data-test="molecularProfileSelector"] input[type="checkbox"]',
+            3000
+        );
+        // mutations, CNA should be selected
+        assert(
+            browser.isSelected(
+                'div[data-test="molecularProfileSelector"] input[type="checkbox"][data-test="MUTATION_EXTENDED"]'
+            ),
+            'mutation profile should be selected'
+        );
+        assert(
+            browser.isSelected(
+                'div[data-test="molecularProfileSelector"] input[type="checkbox"][data-test="COPY_NUMBER_ALTERATION"]'
+            ),
+            'cna profile should be selected'
+        );
+        assert(
+            !browser.isSelected(
+                'div[data-test="molecularProfileSelector"] input[type="checkbox"][data-test="MRNA_EXPRESSION"]'
+            ),
+            'mrna profile not selected'
+        );
+
+        // enter oql
+        browser.waitForExist('textarea[data-test="geneSet"]', 2000);
+        setInputText('textarea[data-test="geneSet"]', 'BRCA1: EXP>1');
+
+        browser.waitForEnabled('button[data-test="queryButton"]', 5000);
+        browser.click('button[data-test="queryButton"]');
+
+        // wait for query to load
+        waitForOncoprint(20000);
+
+        const query = browser.execute(function() {
+            return urlWrapper.query;
+        }).value;
+        // mutation, cna, mrna profiles are there
+        assert.equal(
+            query.genetic_profile_ids_PROFILE_MUTATION_EXTENDED,
+            'acc_tcga_pan_can_atlas_2018_mutations'
+        );
+        assert.equal(
+            query.genetic_profile_ids_PROFILE_COPY_NUMBER_ALTERATION,
+            'acc_tcga_pan_can_atlas_2018_gistic'
+        );
+        assert.equal(
+            query.genetic_profile_ids_PROFILE_MRNA_EXPRESSION,
+            'acc_tcga_pan_can_atlas_2018_rna_seq_v2_mrna_median_Zscores'
+        );
+    });
+});
+
+describe('results page quick oql edit', () => {
+    before(() => {
+        goToUrlAndSetLocalStorage(
+            `${CBIOPORTAL_URL}/results/oncoprint?genetic_profile_ids_PROFILE_MUTATION_EXTENDED=acc_tcga_pan_can_atlas_2018_mutations&genetic_profile_ids_PROFILE_COPY_NUMBER_ALTERATION=acc_tcga_pan_can_atlas_2018_gistic&cancer_study_list=acc_tcga_pan_can_atlas_2018&Z_SCORE_THRESHOLD=2.0&RPPA_SCORE_THRESHOLD=2.0&data_priority=0&profileFilter=0&case_set_id=acc_tcga_pan_can_atlas_2018_cnaseq&gene_list=BRCA1&geneset_list=%20&tab_index=tab_visualize&Action=Submit`
+        );
+    });
+
+    it.skip('gives a submit error if protein oql is inputted and no protein profile is available for the study', () => {
+        browser.waitForExist('[data-test="oqlQuickEditButton"]', 20000);
+        browser.click('[data-test="oqlQuickEditButton"]');
+
+        browser.waitForExist('.quick_oql_edit [data-test="geneSet"]', 5000);
+        setInputText('.quick_oql_edit [data-test="geneSet"]', 'PTEN: PROT>0');
+
+        // error appears
+        browser.waitUntil(() => {
+            return (
+                browser.isExisting(
+                    '.quick_oql_edit [data-test="oqlErrorMessage"]'
+                ) &&
+                browser.getText(
+                    '.quick_oql_edit [data-test="oqlErrorMessage"]'
+                ) ===
+                    'Protein level data query specified in OQL, but no protein level profile is available in the selected study.'
+            );
+        }, 20000);
+
+        // submit is disabled
+        assert(
+            !browser.isEnabled('button[data-test="oqlQuickEditSubmitButton"]')
+        );
+    });
+    it('auto-selects an mrna profile when mrna oql is entered', () => {
+        let query = browser.execute(function() {
+            return urlWrapper.query;
+        }).value;
+        // mutation and cna profile are there
+        assert.equal(
+            query.genetic_profile_ids_PROFILE_MUTATION_EXTENDED,
+            'acc_tcga_pan_can_atlas_2018_mutations'
+        );
+        assert.equal(
+            query.genetic_profile_ids_PROFILE_COPY_NUMBER_ALTERATION,
+            'acc_tcga_pan_can_atlas_2018_gistic'
+        );
+        assert.equal(
+            query.genetic_profile_ids_PROFILE_MRNA_EXPRESSION,
+            undefined
+        );
+
+        // enter oql
+        browser.waitForExist(
+            '.quick_oql_edit textarea[data-test="geneSet"]',
+            2000
+        );
+        setInputText(
+            '.quick_oql_edit textarea[data-test="geneSet"]',
+            'PTEN: EXP>1'
+        );
+
+        browser.waitForEnabled(
+            'button[data-test="oqlQuickEditSubmitButton"]',
+            5000
+        );
+        browser.click('button[data-test="oqlQuickEditSubmitButton"]');
+
+        // wait for query to load
+        waitForOncoprint(20000);
+
+        // mutation, cna, mrna profiles are there
+        query = browser.execute(function() {
+            return urlWrapper.query;
+        }).value;
+        assert.equal(
+            query.genetic_profile_ids_PROFILE_MUTATION_EXTENDED,
+            'acc_tcga_pan_can_atlas_2018_mutations'
+        );
+        assert.equal(
+            query.genetic_profile_ids_PROFILE_COPY_NUMBER_ALTERATION,
+            'acc_tcga_pan_can_atlas_2018_gistic'
+        );
+        assert.equal(
+            query.genetic_profile_ids_PROFILE_MRNA_EXPRESSION,
+            'acc_tcga_pan_can_atlas_2018_rna_seq_v2_mrna_median_Zscores'
         );
     });
 });

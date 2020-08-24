@@ -1,5 +1,5 @@
 import * as React from 'react';
-import * as styles_any from './styles/styles.module.scss';
+import styles from './styles/styles.module.scss';
 import { Modal } from 'react-bootstrap';
 import ReactSelect from 'react-select1';
 import { observer } from 'mobx-react';
@@ -16,25 +16,11 @@ import AppConfig from 'appConfig';
 import { ServerConfigHelpers } from '../../../config/config';
 import OQLTextArea, { GeneBoxType } from '../GeneSelectionBox/OQLTextArea';
 import { SingleGeneQuery } from 'shared/lib/oql/oql-parser';
-import { Gene } from 'shared/api/generated/CBioPortalAPI';
+import { Gene } from 'cbioportal-ts-api-client';
 import { bind } from 'bind-decorator';
 import GenesetsValidator from './GenesetsValidator';
 import FontAwesome from 'react-fontawesome';
 import GeneSymbolValidationError from './GeneSymbolValidationError';
-
-const styles = styles_any as {
-    GeneSetSelector: string;
-    MutSigGeneSelectorWindow: string;
-    GisticGeneSelectorWindow: string;
-    buttonRow: string;
-    geneSet: string;
-    empty: string;
-    notEmpty: string;
-    sectionSpinner: string;
-    learnOql: string;
-    geneCount: string;
-    icon: string;
-};
 
 @observer
 export default class GeneSetSelector extends QueryStoreComponent<{}, {}> {
@@ -99,9 +85,7 @@ export default class GeneSetSelector extends QueryStoreComponent<{}, {}> {
                             name="exclamation-circle"
                         />
                         <GeneSymbolValidationError
-                            sampleCount={
-                                this.store.profiledSamplesCount.result.all
-                            }
+                            sampleCount={this.store.approxSampleCount}
                             queryProductLimit={
                                 AppConfig.serverConfig.query_product_limit
                             }
@@ -117,7 +101,7 @@ export default class GeneSetSelector extends QueryStoreComponent<{}, {}> {
 
     render() {
         return (
-            <FlexRow padded overflow className={styles.GeneSetSelector}>
+            <FlexRow overflow padded className={styles.GeneSetSelector}>
                 <SectionHeader
                     className="sectionLabel"
                     secondaryComponent={
@@ -133,11 +117,6 @@ export default class GeneSetSelector extends QueryStoreComponent<{}, {}> {
                             <i className={'fa fa-external-link'} />
                         </a>
                     }
-                    promises={[
-                        this.store.mutSigForSingleStudy,
-                        this.store.gisticForSingleStudy,
-                        this.store.genes,
-                    ]}
                 >
                     Enter Genes:
                 </SectionHeader>
@@ -160,6 +139,8 @@ export default class GeneSetSelector extends QueryStoreComponent<{}, {}> {
                             'Enter HUGO Gene Symbols, Gene Aliases, or OQL'
                         }
                         callback={this.handleOQLUpdate}
+                        error={this.store.submitError}
+                        messages={this.store.oqlMessages}
                     >
                         {this.customError}
                     </OQLTextArea>
