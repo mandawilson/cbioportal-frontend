@@ -156,9 +156,13 @@ export default class PortalHeader extends React.Component<
                                 <If
                                     condition={
                                         AppConfig.serverConfig
-                                            .authenticationMethod &&
-                                        AppConfig.serverConfig.authenticationMethod.includes(
-                                            'social_auth'
+                                            .authenticationMethod && (
+                                            AppConfig.serverConfig.authenticationMethod.includes(
+                                                'social_auth'
+                                            ) ||
+                                            AppConfig.serverConfig.authenticationMethod.includes(
+                                                'oauth2'
+                                            )
                                         )
                                     }
                                 >
