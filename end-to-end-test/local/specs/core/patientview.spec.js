@@ -367,17 +367,22 @@ describe('patient view page', function() {
                 waitForPatientView();
                 const mutationsTable = '[data-test=patientview-mutation-table]';
                 $(`${mutationsTable} button#dropdown-custom-1`).click();
-                browser.pause(500);
                 $(`${mutationsTable} ul.dropdown-menu`)
-                    .$$('li')[19]
+                    .$$('li label input')[19]
                     .click();
                 $(`${mutationsTable} ul.dropdown-menu`)
-                    .$$('li')[20]
+                    .$$('li label input')[20]
                     .click();
                 $(`${mutationsTable} ul.dropdown-menu`)
-                    .$$('li')[21]
+                    .$$('li label input')[21]
                     .click();
                 $(`${mutationsTable} button#dropdown-custom-1`).click();
+            });
+
+            afterEach(() => {
+                // move somewhere safe so that all tooltips close or open tooltips block others from opening
+                browser.moveToObject('body', 0, 0); // offset 0, 0 relative to the top-left corner of the element
+                browser.pause(200); // it takes a bit of time to close the tooltip after moving
             });
 
             const c = 'clonal-icon';
@@ -404,7 +409,9 @@ describe('patient view page', function() {
             });
 
             it('displays clonal column tooltip on mouseover element', () => {
-                browser.moveToObject('span[data-test=clonal-cell] span[key=');
+                browser.moveToObject(
+                    'span[data-test=clonal-cell] span span svg circle'
+                );
                 $(
                     'div[role=tooltip] div[data-test=clonal-tooltip]'
                 ).waitForExist();
@@ -429,7 +436,10 @@ describe('patient view page', function() {
             });
 
             it('displays ccf column tooltip on mouseover element', () => {
-                browser.moveToObject('span[data-test=ccf-cell]');
+                browser.moveToObject('span[data-test=ccf-cell] span');
+                $(
+                    'div[role=tooltip] span[data-test=ccf-tooltip]'
+                ).waitForExist();
             });
         });
     }
